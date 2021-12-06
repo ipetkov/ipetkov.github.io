@@ -1,0 +1,20 @@
+{% extends "terminimal/templates/index.html" %}
+
+{%- block extra_head -%}
+<link rel="stylesheet" href="{{ get_url(path="overrides.css", trailing_slash=false) | safe }}">
+{%- endblock -%}
+
+{% block footer %}
+  <footer class="footer">
+    <div class="footer__inner">
+      <div class="copyright">
+        <span>© {{ date_macros::now_year() }} {{ config.extra.author }}</span>
+
+        <span class="copyright-theme">
+          <span class="copyright-theme-sep">:: </span>
+          Theme based on <a href="https://github.com/pawroman/zola-theme-terminimal/">Terminimal</a> by pawroman
+        </span>
+      </div>
+    </div>
+  </footer>
+{% endblock footer %}

@@ -1,0 +1,32 @@
+base_url = "https://ipetkov.github.io"
+default_language = "en"
+
+theme = "terminimal"
+
+compile_sass = true
+minify_html = true
+
+hard_link_static = true
+build_search_index = false
+
+taxonomies = [
+    {name = 'tags'}
+]
+
+[markdown]
+highlight_code = true
+highlight_theme = "ayu-dark"
+external_links_no_follow = true
+external_links_no_referrer = true
+
+[extra]
+accent_color = "green"
+author = "Ivan Petkov"
+enable_post_view_navigation = true
+logo_home_link = "/blog"
+menu_items = [
+    {name = "blog", url = "$BASE_URL/blog"},
+    {name = "tags", url = "$BASE_URL/tags"},
+]
+post_view_navigation_prompt = ""
+use_full_hack_font = false

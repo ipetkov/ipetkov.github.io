@@ -1,0 +1,24 @@
+.header {
+  .menu {
+    margin-top: 20px;
+    margin-bottom: 0;
+    margin-left: 0;
+    margin-right: 0;
+  }
+}
+
+.post {
+  margin: 0;
+}
+
+.pagination {
+  margin-top: 0;
+
+  &__title {
+    margin-top: 20px;
+  }
+}
+
+.footer {
+  padding: 0;
+}
