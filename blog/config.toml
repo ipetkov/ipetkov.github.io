@@ -24,8 +24,10 @@ author = "Ivan Petkov"
 enable_post_view_navigation = true
 favicon = "/favicon.png"
 favicon_mimetype = "image/png"
-logo_home_link = "/blog"
+logo_text = "ipetkov.github.io"
 menu_items = [
+    {name = "home", url = "$BASE_URL"},
+    {name = "about", url = "$BASE_URL/about"},
     {name = "blog", url = "$BASE_URL/blog"},
     {name = "tags", url = "$BASE_URL/tags"},
 ]
