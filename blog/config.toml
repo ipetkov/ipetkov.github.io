@@ -6,7 +6,6 @@ theme = "terminimal"
 compile_sass = true
 minify_html = true
 
-hard_link_static = true
 build_search_index = false
 
 taxonomies = [
@@ -23,6 +22,8 @@ external_links_no_referrer = true
 accent_color = "green"
 author = "Ivan Petkov"
 enable_post_view_navigation = true
+favicon = "/favicon.png"
+favicon_mimetype = "image/png"
 logo_home_link = "/blog"
 menu_items = [
     {name = "blog", url = "$BASE_URL/blog"},
