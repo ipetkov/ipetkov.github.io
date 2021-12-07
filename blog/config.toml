@@ -1,16 +1,15 @@
 base_url = "https://ipetkov.github.io"
+build_search_index = false
 default_language = "en"
-
-theme = "terminimal"
-
 compile_sass = true
 minify_html = true
-
-build_search_index = false
-
+feed_filename = "atom.xml"
+generate_feed = true
 taxonomies = [
     {name = 'tags'}
 ]
+title = "Ivan Petkov"
+theme = "terminimal"
 
 [markdown]
 highlight_code = true
