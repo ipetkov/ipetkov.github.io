@@ -4,6 +4,23 @@
 <link rel="stylesheet" href="{{ get_url(path="overrides.css", trailing_slash=false) | safe }}">
 {%- endblock -%}
 
+{% block title %}
+  {% if term %}
+    {% set title_prefix = term.name %}
+  {% elif taxonomy %}
+    {% set title_prefix = taxonomy.name %}
+  {% elif section %}
+    {% set title_prefix = section.title %}
+  {% elif page %}
+    {% set title_prefix = page.title %}
+  {% endif %}
+
+  {%- if title_prefix %}
+      {{ title_prefix }} |
+  {% endif -%}
+  {{ config.title }}
+{% endblock title %}
+
 {% block content %}
     <div class="posts">
       {%- set max_recent = section.extra.max_recent %}
