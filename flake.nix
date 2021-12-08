@@ -4,7 +4,9 @@
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
     terminimal = {
-      url = "github:pawroman/zola-theme-terminimal";
+      # url = "github:pawroman/zola-theme-terminimal";
+      # Switch to my own fork of terminimal until my changes are upstreamed
+      url = "github:ipetkov/zola-theme-terminimal";
       flake = false;
     };
     utils.url = "github:numtide/flake-utils";
@@ -45,10 +47,17 @@
             THEMES_PATH="$(${pkgs.git}/bin/git rev-parse --show-toplevel)/blog/themes"
             TERMINIMAL_PATH="$THEMES_PATH/terminimal"
 
-            [ -d "$TERMINIMAL_PATH" ] || (
-              mkdir -p "$THEMES_PATH"
-              ln -sfn ${terminimal} "$THEMES_PATH/terminimal"
-            )
+            if [[ ! -e "$TERMINIMAL_PATH" ]]; then
+                ln -sfn "${terminimal}" "$TERMINIMAL_PATH"
+            elif [[ -L "$TERMINIMAL_PATH" ]]; then
+              if [[ ! "$TERMINIMAL_PATH" -ef "${terminimal}" ]]; then
+                echo "warning: unlinking stale theme and replacing with flake input"
+                unlink "$TERMINIMAL_PATH"
+                ln -sfn "${terminimal}" "$TERMINIMAL_PATH"
+              fi
+            else
+              echo "warning: unsure how to link theme, consider clearing $TERMINIMAL_PATH"
+            fi
           '';
         };
       });

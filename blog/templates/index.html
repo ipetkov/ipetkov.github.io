@@ -21,6 +21,10 @@
   {{ config.title }}
 {% endblock title %}
 
+{% block logo_content %}
+{{- config.base_url | trim_start_matches(pat="https://") | trim_start_matches(pat="http://") -}}
+{% endblock %}
+
 {% block content %}
     <div class="posts">
       {%- set max_recent = section.extra.max_recent %}
