@@ -7,7 +7,7 @@ stdenv.mkDerivation {
   pname = "blog";
   version = "0.0.1";
 
-  src = ./blog;
+  src = ./.;
 
   buildInputs = [ zola ];
 

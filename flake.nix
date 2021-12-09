@@ -42,16 +42,21 @@
 
           # Link themes managed by Nix rather than having to go with git submodules manually
           shellHook = ''
-            THEMES_PATH="$(${pkgs.git}/bin/git rev-parse --show-toplevel)/blog/themes"
+            THEMES_PATH="$(${pkgs.git}/bin/git rev-parse --show-toplevel)/themes"
             TERMINIMAL_PATH="$THEMES_PATH/terminimal"
 
+            function makeThemeLink() {
+              mkdir -p "$THEMES_PATH"
+              ln -sfn "${terminimal}" "$TERMINIMAL_PATH"
+            }
+
             if [[ ! -e "$TERMINIMAL_PATH" ]]; then
-                ln -sfn "${terminimal}" "$TERMINIMAL_PATH"
+                makeThemeLink
             elif [[ -L "$TERMINIMAL_PATH" ]]; then
               if [[ ! "$TERMINIMAL_PATH" -ef "${terminimal}" ]]; then
                 echo "warning: unlinking stale theme and replacing with flake input"
                 unlink "$TERMINIMAL_PATH"
-                ln -sfn "${terminimal}" "$TERMINIMAL_PATH"
+                makeThemeLink
               fi
             else
               echo "warning: unsure how to link theme, consider clearing $TERMINIMAL_PATH"
