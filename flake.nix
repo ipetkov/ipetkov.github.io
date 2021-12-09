@@ -4,9 +4,7 @@
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
     terminimal = {
-      # url = "github:pawroman/zola-theme-terminimal";
-      # Switch to my own fork of terminimal until my changes are upstreamed
-      url = "github:ipetkov/zola-theme-terminimal";
+      url = "github:pawroman/zola-theme-terminimal";
       flake = false;
     };
     utils.url = "github:numtide/flake-utils";
