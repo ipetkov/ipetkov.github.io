@@ -1,6 +1,7 @@
 {% extends "terminimal/templates/index.html" %}
 
 {%- block extra_head -%}
+<link rel="icon" type="{{ config.extra.favicon_mimetype | safe }}" href="{{ get_url(path=config.extra.favicon_path) }}">
 <link rel="stylesheet" href="{{ get_url(path="overrides.css", trailing_slash=false) | safe }}">
 <link rel="alternate" type="application/atom+xml" title="{{ config.title }}" href="{{ get_url(path="atom.xml", trailing_slash=false) }}">
 {%- endblock -%}

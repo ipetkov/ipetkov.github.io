@@ -21,7 +21,8 @@ external_links_no_referrer = true
 accent_color = "green"
 author = "Ivan Petkov"
 enable_post_view_navigation = true
-favicon = "/favicon.png"
+# NB: this is different than terminimal's config so we can bypass it
+favicon_path = "/favicon.png"
 favicon_mimetype = "image/png"
 menu_items = [
     {name = "home", url = "$BASE_URL"},

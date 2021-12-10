@@ -16,7 +16,7 @@
         {{ config.base_url | escape_xml | safe }}
       {%- endif -%}
     "/>
-	<icon>{{ get_url(path=config.extra.favicon) }}</icon>
+	<icon>{{ get_url(path=config.extra.favicon_path) }}</icon>
 	<generator uri="https://www.getzola.org/">Zola</generator>
 	<updated>{{ last_updated | date(format="%+") }}</updated>
 	<id>{{ feed_url | safe }}</id>
