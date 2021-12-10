@@ -1,4 +1,4 @@
-base_url = "https://ipetkov.github.io"
+base_url = "https://ipetkov.dev"
 build_search_index = false
 default_language = "en"
 compile_sass = true
