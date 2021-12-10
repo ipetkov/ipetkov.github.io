@@ -2,6 +2,7 @@
 
 {%- block extra_head -%}
 <link rel="stylesheet" href="{{ get_url(path="overrides.css", trailing_slash=false) | safe }}">
+<link rel="alternate" type="application/atom+xml" title="{{ config.title }}" href="{{ get_url(path="atom.xml", trailing_slash=false) }}">
 {%- endblock -%}
 
 {% block title %}
