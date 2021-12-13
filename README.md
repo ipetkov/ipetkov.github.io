@@ -2,8 +2,8 @@
 
 Hello! Looks like you've found the repo for my blog.
 
-If you've landed here by accident, I recommend looking at the actual web page, I
-promise its much better :)
+If you've landed here by accident, I recommend looking at [the actual web
+page](https://ipetkov.dev), I promise its much better :)
 
 But, if you're here to find some inspiration, feel free to look under the hood!
 

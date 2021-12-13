@@ -10,8 +10,6 @@ tags = ["NixOS", "zfs"]
 _This write up was originally published within my
 [dotfiles](https://github.com/ipetkov/dotfiles/blob/fdb4df76ca2b031f4dcc668f6a8b58edb1948a52/docs/machine_init.md)_.
 
-# Machine initialization
-
 NixOS is a great tool for declaratively managing system configurations (namely
 what packages and other config files are available), but there are still a
 number of imperative steps to run when setting up a brand new machine before
