@@ -1,6 +1,7 @@
 +++
 title = "Installing NixOS and ZFS on my Desktop"
 date = 2021-01-24
+updated = 2021-12-13
 
 [taxonomies]
 tags = ["NixOS", "zfs"]
