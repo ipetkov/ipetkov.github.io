@@ -37,6 +37,7 @@
           inputsFrom = builtins.attrValues self.checks.${system};
 
           buildInputs = with pkgs; [
+            graphviz
             nixpkgs-fmt
           ];
 

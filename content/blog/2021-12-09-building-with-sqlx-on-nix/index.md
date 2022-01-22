@@ -1,6 +1,7 @@
 +++
 title = "Building with SQLx on Nix"
 date = 2021-12-09
+updated = 2022-01-21
 
 [taxonomies]
 tags = ["NixOS", "naersk", "rust"]
@@ -89,21 +90,16 @@ Let's break down the configuration above:
 
 This leaves us  with the following (minimal) dependency tree:
 
-```
-+--------------------+    +------------+
-|./mycrate/Cargo.lock|--->|mycrate-deps|
-+--------------------+    +------------+
-                              |
-                              V
-+------------+            +---------+
-|sqlx-prepare|----------->| mycrate |
-+------------+            +---------+
-        ^                     ^
-        |                     |
-+--------------------+    +---------+
-|./mycrate/migrations|~~~>|./mycrate|
-+--------------------+    +---------+
-```
+<figure>
+  <img
+    src="./deps.dot.svg"
+    alt="The mycrate derivation depends on the sqlx-db-prepare and mycrate-deps derivations along with the ./mycrate source. The mycrate-deps derivation depends only on the ./mycrate/Cargo.lock source. The sqlx-db-prepare derivation only depends on the ./mycrate/migrations source. The ./mycrate source &quot;depends&quot; (i.e. contains) the ./mycrate/Cargo.lock and ./mycrate/migrations sources."
+  />
+  <figcaption>
+    The arrows show which way the results "flow", from sources (represented in
+    boxes) to intermediate and final derivations (represented as circles).
+  </figcaption>
+<figure>
 
 <details>
   <summary>Auxiliary example files can be found here.</summary>
