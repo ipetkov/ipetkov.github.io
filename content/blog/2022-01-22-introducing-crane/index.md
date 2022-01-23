@@ -2,6 +2,7 @@
 title = "Introducing Crane: Composable and Cacheable Builds with Cargo and Nix"
 description = "Crane is a Nix library for building cargo projects"
 date = 2022-01-22
+updated = 2022-01-23
 
 [taxonomies]
 tags = ["NixOS", "rust", "cargo", "crane"]
@@ -12,7 +13,8 @@ building cargo projects!
 
 In a nutshell it offers:
 * **Source fetching**: automatically done using a Cargo.lock file
-* **Incremental builds**: never build a dependency twice with easy artifact caching
+* **Incremental**: build your workspace dependencies just once, then quickly lint,
+  build, and test changes to your project without slowing down
 * **Composable configuration**: split builds and tests into granular steps. Gate CI without
   burdening downstream consumers building from source.
 
