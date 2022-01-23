@@ -1,5 +1,6 @@
 +++
 title = "Installing NixOS and ZFS on my Desktop"
+description = "A walk through how I went about installing NixOS on my desktop."
 date = 2021-01-24
 updated = 2021-12-13
 

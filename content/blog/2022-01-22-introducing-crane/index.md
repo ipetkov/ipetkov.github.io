@@ -1,5 +1,6 @@
 +++
 title = "Introducing Crane: Composable and Cacheable Builds with Cargo and Nix"
+description = "Crane is a Nix library for building cargo projects"
 date = 2022-01-22
 
 [taxonomies]

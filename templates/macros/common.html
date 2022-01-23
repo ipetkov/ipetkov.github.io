@@ -1,0 +1,15 @@
+{%- macro get_current_title() -%}
+  {%- if term -%}
+    {{- term.name -}}
+  {%- elif taxonomy -%}
+    {{- taxonomy.name -}}
+  {%- elif section -%}
+    {{- section.title -}}
+  {%- elif page -%}
+    {{- page.title -}}
+  {%- endif -%}
+{%- endmacro get_current_title -%}
+
+{%- macro domain_without_scheme() -%}
+  {{- config.base_url | trim_start_matches(pat="https://") | trim_start_matches(pat="http://") -}}
+{%- endmacro domain_without_scheme -%}

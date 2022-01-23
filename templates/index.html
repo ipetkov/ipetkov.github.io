@@ -1,30 +1,28 @@
 {% extends "terminimal/templates/index.html" %}
+{% import "macros/common.html" as common %}
 
 {%- block extra_head -%}
+<meta property="og:title" content="{{- common::get_current_title() -}}">
+<meta property="og:site_name" content="{{- common::domain_without_scheme() -}}">
+<meta property="og:image" content="{{ get_url(path=config.extra.favicon_path) }}">
+<meta property="og:image:type" content="{{ config.extra.favicon_mimetype | safe }}">
+<meta property="og:image:alt" content="{{ common::domain_without_scheme() }} favicon">
+{% if page -%}
+<meta property="og:url" content="{{ page.permalink | safe }}">
+<meta property="og:description" content="{{ page.description }}">
+<meta property="og:type" content="article">
+{% endif -%}
 <link rel="icon" type="{{ config.extra.favicon_mimetype | safe }}" href="{{ get_url(path=config.extra.favicon_path) }}">
 <link rel="stylesheet" href="{{ get_url(path="overrides.css", trailing_slash=false) | safe }}">
 <link rel="alternate" type="application/atom+xml" title="{{ config.title }}" href="{{ get_url(path="atom.xml", trailing_slash=false) }}">
 {%- endblock -%}
 
 {% block title %}
-  {% if term %}
-    {% set title_prefix = term.name %}
-  {% elif taxonomy %}
-    {% set title_prefix = taxonomy.name %}
-  {% elif section %}
-    {% set title_prefix = section.title %}
-  {% elif page %}
-    {% set title_prefix = page.title %}
-  {% endif %}
-
-  {%- if title_prefix %}
-      {{ title_prefix }} |
-  {% endif -%}
-  {{ config.title }}
+  {{- common::get_current_title() }} | {{ config.title -}}
 {% endblock title %}
 
 {% block logo_content %}
-{{- config.base_url | trim_start_matches(pat="https://") | trim_start_matches(pat="http://") -}}
+{{- common::domain_without_scheme() -}}
 {% endblock %}
 
 {% block content %}

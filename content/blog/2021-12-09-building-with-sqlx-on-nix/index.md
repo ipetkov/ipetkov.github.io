@@ -1,5 +1,6 @@
 +++
 title = "Building with SQLx on Nix"
+description = "How to use Nix to build a rust project which depends on SQLx"
 date = 2021-12-09
 updated = 2022-01-21
 

@@ -1,5 +1,6 @@
 +++
 title = "Tips and Tricks for Nix Flakes"
+description = "Tips and tricks to keep in mind when working with Nix flakes"
 date = 2021-12-12
 
 [taxonomies]
