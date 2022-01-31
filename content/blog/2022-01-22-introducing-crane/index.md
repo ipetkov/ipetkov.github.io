@@ -2,7 +2,7 @@
 title = "Introducing Crane: Composable and Cacheable Builds with Cargo and Nix"
 description = "Crane is a Nix library for building cargo projects"
 date = 2022-01-22
-updated = 2022-01-23
+updated = 2022-01-30
 
 [taxonomies]
 tags = ["NixOS", "rust", "cargo", "crane"]
@@ -260,7 +260,7 @@ giant derivation.
 # Try it out
 
 I wanted to get an initial version out in the open, but there is, of course,
-more work to be done. Support for git dependencies and private registries is
+more work to be done. Support for git dependencies ~~and private registries~~ is
 missing, but something I'd like to add in the near future.
 
 In the meantime, feel free to check it out for yourself and kick the tires. The
@@ -268,6 +268,8 @@ In the meantime, feel free to check it out for yourself and kick the tires. The
 resources.
 
 I'd love to know what you think!
+
+_Edit 2022-01-30: alternate cargo registry support has landed in Crane v0.2.0!_
 
 [API]: https://github.com/ipetkov/crane/blob/master/docs/API.md
 [Crane]: https://github.com/ipetkov/crane
