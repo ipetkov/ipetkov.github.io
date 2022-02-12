@@ -260,8 +260,8 @@ giant derivation.
 # Try it out
 
 I wanted to get an initial version out in the open, but there is, of course,
-more work to be done. Support for git dependencies ~~and private registries~~ is
-missing, but something I'd like to add in the near future.
+more work to be done. ~~Support for git dependencies and private registries is
+missing, but something I'd like to add in the near future.~~
 
 In the meantime, feel free to check it out for yourself and kick the tires. The
 [getting started] guide, [examples], and [API] documentation will be useful
@@ -270,6 +270,8 @@ resources.
 I'd love to know what you think!
 
 _Edit 2022-01-30: alternate cargo registry support has landed in Crane v0.2.0!_
+
+_Edit 2022-02-11: git dependency support has landed in Crane v0.3.0!_
 
 [API]: https://github.com/ipetkov/crane/blob/master/docs/API.md
 [Crane]: https://github.com/ipetkov/crane
