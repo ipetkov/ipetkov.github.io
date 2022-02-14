@@ -2,6 +2,7 @@
 title = "Crane Support for Alternative Registries and Git Dependencies"
 description = "Crane now supports building cargo projects with alternative registries and git dependencies!"
 date = 2022-02-13
+updated = 2022-02-14
 
 [taxonomies]
 tags = ["NixOS", "rust", "cargo", "crane"]
@@ -36,7 +37,7 @@ crates come from crates.io or some other index:
    in a format that cargo can understand
    * The sources are basically tarballs which are extracted into directories
      named after the crate's name and version, along with some checksum metadata
-     used by cargo to validate the sources are as expected).
+     used by cargo to validate the sources are as expected.
 1. Finally, we write some configuration which can instruct cargo to look at the
    directories we've prepared when building the project, instead of trying to
    access the network itself (which would fail if running inside of a sandboxed
