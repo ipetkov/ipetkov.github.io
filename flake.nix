@@ -30,10 +30,9 @@
       in
       {
         checks = myPkgs;
-        packages = myPkgs;
-        defaultPackage = myPkgs.blog;
+        packages = myPkgs // { default = myPkgs.blog; };
 
-        devShell = pkgs.mkShell {
+        devShells.default = pkgs.mkShell {
           inputsFrom = builtins.attrValues self.checks.${system};
 
           buildInputs = with pkgs; [
