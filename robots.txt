@@ -1,0 +1,3 @@
+User-agent: *
+Allow: /
+Sitemap: https://ipetkov.dev/sitemap.xml
