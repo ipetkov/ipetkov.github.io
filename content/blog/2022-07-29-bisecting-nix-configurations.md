@@ -2,6 +2,7 @@
 title = "Bisecting Nix Configurations"
 description = "Using Nix Flakes to quickly find a commit breaking my workflow"
 date = 2022-07-29
+aliases = ["/blog/bisecting-nix-configsurations/"]
 
 [taxonomies]
 tags = ["NixOS", "flakes", "debugging"]
