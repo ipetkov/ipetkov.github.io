@@ -14,6 +14,7 @@
 {% endif -%}
 <link rel="icon" type="{{ config.extra.favicon_mimetype | safe }}" href="{{ get_url(path=config.extra.favicon_path) }}">
 <link rel="stylesheet" href="{{ get_url(path="overrides.css", trailing_slash=false) | safe }}">
+<link rel="me" href="{{ config.extra.mastodon | escape_xml | safe }}">
 <link rel="alternate" type="application/atom+xml" title="{{ config.title }}" href="{{ get_url(path="atom.xml", trailing_slash=false) }}">
 {%- endblock -%}
 

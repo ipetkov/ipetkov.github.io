@@ -32,3 +32,4 @@ menu_items = [
 ]
 post_view_navigation_prompt = ""
 use_full_hack_font = false
+mastodon = "https://hachyderm.io/@ivan"

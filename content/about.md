@@ -14,5 +14,5 @@ which interest me.
 # Contact
 
 * [GitHub](https://github.com/ipetkov)
-* [Twitter](https://twitter.com/i_ppetkov)
+* <a rel="me" href="https://hachyderm.io/@ivan">Mastodon</a>
 * Or you could always send me an email...
