@@ -16,7 +16,11 @@ jobs:
           mkdir output
           nix build --out-link result --print-build-logs
           rsync -r -L ./result/ ./output
-      - name: commit
+      - name: setup SSH keys
+        run: |
+          ssh-agent -a $SSH_AUTH_SOCK > /dev/null
+          ssh-add - <<< "${{ secrets.DEPLOY_KEY }}"
+      - name: push
         working-directory: output
         run: |
           git init
@@ -25,8 +29,4 @@ jobs:
           git branch -M gh-pages
           git add .
           git commit -m "Deploying site"
-      - name: setup SSH keys and push
-        run: |
-          ssh-agent -a $SSH_AUTH_SOCK > /dev/null
-          ssh-add - <<< "${{ secrets.DEPLOY_KEY }}"
           git push --force "git@github.com:${GITHUB_REPOSITORY}.git" gh-pages
