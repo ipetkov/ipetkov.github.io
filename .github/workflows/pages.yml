@@ -11,16 +11,12 @@ jobs:
     steps:
       - uses: actions/checkout@v2
       - uses: cachix/install-nix-action@v16
-      - name: setup SSH keys
-        run: |
-          ssh-agent -a $SSH_AUTH_SOCK > /dev/null
-          ssh-add - <<< "${{ secrets.DEPLOY_KEY }}"
       - name: zola build
         run: |
           mkdir output
           nix build --out-link result --print-build-logs
           rsync -r -L ./result/ ./output
-      - name: push
+      - name: commit
         working-directory: output
         run: |
           git init
@@ -29,4 +25,8 @@ jobs:
           git branch -M gh-pages
           git add .
           git commit -m "Deploying site"
+      - name: setup SSH keys and push
+        run: |
+          ssh-agent -a $SSH_AUTH_SOCK > /dev/null
+          ssh-add - <<< "${{ secrets.DEPLOY_KEY }}"
           git push --force "git@github.com:${GITHUB_REPOSITORY}.git" gh-pages
