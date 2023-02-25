@@ -30,6 +30,7 @@ menu_items = [
     {name = "blog", url = "$BASE_URL/blog"},
     {name = "tags", url = "$BASE_URL/tags"},
 ]
+page_titles = "combined"
 post_view_navigation_prompt = ""
 use_full_hack_font = false
 mastodon = "https://hachyderm.io/@ivan"

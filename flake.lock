@@ -26,11 +26,11 @@
     "terminimal": {
       "flake": false,
       "locked": {
-        "lastModified": 1668419108,
-        "narHash": "sha256-wui5XaOW4UdRzKY3ZThx5e7fiDld0BZPv+H28L1ydb0=",
+        "lastModified": 1674908149,
+        "narHash": "sha256-7qN5a//BjTn4OhrkgziWCP8w7GOKZJSVcg9Qz0Ua150=",
         "owner": "pawroman",
         "repo": "zola-theme-terminimal",
-        "rev": "eb82877d3d8459a9fa2c295040fdb7fd28fc1ba3",
+        "rev": "0ec1aed81acf7ea47e457b9289c1974186c3eb3d",
         "type": "github"
       },
       "original": {
