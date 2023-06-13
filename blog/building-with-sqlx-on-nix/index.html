@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <title>Building with SQLx on Nix | Ivan Petkov</title>
+    
+    <meta http-equiv="content-type" content="text/html; charset=utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1">
+    <meta name="robots" content="noodp"/>
+
+    <link rel="stylesheet" href="https://ipetkov.dev/style.css">
+    <link rel="stylesheet" href="https://ipetkov.dev/color/green.css">
+
+        <link rel="stylesheet" href="https://ipetkov.dev/color/background_blue.css">
+    
+    <link rel="stylesheet" href="https://ipetkov.dev/font-hack-subset.css">
+
+        <link rel="alternate" type="application/rss+xml" title="RSS" href="https://ipetkov.dev/rss.xml">
+    <meta property="og:title" content="Building with SQLx on Nix">
+<meta property="og:site_name" content="ipetkov.dev">
+<meta property="og:image" content="https://ipetkov.dev/favicon.png">
+<meta property="og:image:type" content="image/png">
+<meta property="og:image:alt" content="ipetkov.dev favicon">
+<meta property="og:url" content="https://ipetkov.dev/blog/building-with-sqlx-on-nix/">
+<meta property="og:description" content="How to use Nix to build a rust project which depends on SQLx">
+<meta property="og:type" content="article">
+<link rel="icon" type="image/png" href="https://ipetkov.dev/favicon.png">
+<link rel="stylesheet" href="https://ipetkov.dev/overrides.css">
+<link rel="me" href="https://hachyderm.io/@ivan">
+<link rel="alternate" type="application/atom+xml" title="Ivan Petkov" href="https://ipetkov.dev/atom.xml"></head>
+
+<body class="">
+<div class="container">
+    
+    <header class="header">
+        <div class="header__inner">
+            <div class="header__logo">
+                    
+                <a href="https://ipetkov.dev" style="text-decoration: none;">
+                    <div class="logo">
+                      ipetkov.dev
+                    </div>
+                </a>
+            </div>
+        </div>
+
+        
+        <nav class="menu">
+            <ul class="menu__inner">
+                <li><a href="https://ipetkov.dev">home</a></li>
+            
+                <li><a href="https://ipetkov.dev/about">about</a></li>
+            
+                <li class="active"><a href="https://ipetkov.dev/blog">blog</a></li>
+            
+                <li><a href="https://ipetkov.dev/tags">tags</a></li>
+            </ul>
+        </nav>
+    
+    
+        
+    </header>
+    
+
+    <div class="content">
+        
+    <div class="post">
+        
+    <h1 class="post-title"><a href="https://ipetkov.dev/blog/building-with-sqlx-on-nix/">Building with SQLx on Nix</a></h1>
+    <div class="post-meta-inline">
+        
+    <span class="post-date">
+            2021-12-09
+        </span>
+
+    </div>
+
+    
+        <span class="post-tags-inline">
+                :: tags:&nbsp;
+                <a class="post-tag" href="https://ipetkov.dev/tags/nixos/">#NixOS</a>&nbsp;
+                <a class="post-tag" href="https://ipetkov.dev/tags/naersk/">#naersk</a>&nbsp;
+                <a class="post-tag" href="https://ipetkov.dev/tags/rust/">#rust</a></span>
+    
+
+        
+        <div class="post-content">
+            <p><a rel="nofollow noreferrer" href="https://github.com/launchbadge/sqlx">SQLx</a> is a Rust crate for asynchronously accessing SQL databases. It works by
+checking all queries at compile time, which means it needs access to the
+database when building.</p>
+<p>Although it supports an offline-mode (intended for CI or network-blocked
+builds), I prefer avoiding having to remember to manually run commands to keep
+schemas in sync.</p>
+<p>Let's take a look at how we can efficiently automate this with <a rel="nofollow noreferrer" href="https://github.com/nix-community/naersk">Naersk</a>!</p>
+<span id="continue-reading"></span><pre data-lang="nix" style="background-color:#0f1419;color:#bfbab0;" class="language-nix "><code class="language-nix" data-lang="nix"><span style="font-style:italic;color:#5c6773;"># mycrate.nix
+</span><span>{ </span><span style="color:#f29718;">naersk
+</span><span style="color:#f29668;">, </span><span style="color:#f29718;">runCommand
+</span><span style="color:#f29668;">, </span><span style="color:#f29718;">sqlx-cli
+</span><span style="color:#f29668;">, </span><span style="color:#f29718;">targetPlatform
+</span><span>}:
+</span><span>
+</span><span style="color:#ff7733;">let
+</span><span>  </span><span style="color:#ffb454;">src </span><span style="color:#f29668;">= </span><span style="color:#c2d94c;">./mycrate</span><span style="color:#bfbab0cc;">;                                                </span><span style="font-style:italic;color:#5c6773;"># 1
+</span><span>  </span><span style="color:#ffb454;">srcMigrations </span><span style="color:#f29668;">= </span><span style="color:#f29718;">src </span><span style="color:#f29668;">+ </span><span style="color:#c2d94c;">/migrations</span><span style="color:#bfbab0cc;">;                              </span><span style="font-style:italic;color:#5c6773;"># 2
+</span><span>
+</span><span>  </span><span style="color:#ffb454;">sqlx-db </span><span style="color:#f29668;">= </span><span style="color:#f29718;">runCommand </span><span style="color:#c2d94c;">&quot;sqlx-db-prepare&quot;                          </span><span style="font-style:italic;color:#5c6773;"># 3
+</span><span>    {
+</span><span>      </span><span style="color:#ffb454;">nativeBuildInputs </span><span style="color:#f29668;">= </span><span>[ </span><span style="color:#f29718;">sqlx-cli </span><span>]</span><span style="color:#bfbab0cc;">;
+</span><span>    } </span><span style="color:#c2d94c;">&#39;&#39;
+</span><span style="color:#c2d94c;">    mkdir $out
+</span><span style="color:#c2d94c;">    export DATABASE_URL=sqlite:$out/db.sqlite3
+</span><span style="color:#c2d94c;">    sqlx database create
+</span><span style="color:#c2d94c;">    sqlx migrate --source </span><span style="font-style:italic;color:#bfbab0;">${</span><span style="font-style:italic;color:#f29718;">srcMigrations</span><span style="font-style:italic;color:#bfbab0;">}</span><span style="color:#c2d94c;"> run
+</span><span style="color:#c2d94c;">  &#39;&#39;</span><span style="color:#bfbab0cc;">;
+</span><span style="color:#ff7733;">in
+</span><span style="color:#f29718;">naersk</span><span style="color:#f29668;">.</span><span style="color:#f29718;">lib</span><span style="color:#f29668;">.</span><span style="color:#c2d94c;">&quot;</span><span style="font-style:italic;color:#bfbab0;">${</span><span style="font-style:italic;color:#f29718;">targetPlatform</span><span style="font-style:italic;color:#f29668;">.</span><span style="font-style:italic;color:#f29718;">system</span><span style="font-style:italic;color:#bfbab0;">}</span><span style="color:#c2d94c;">&quot;</span><span style="color:#f29668;">.</span><span style="color:#f29718;">buildPackage </span><span>{
+</span><span>  </span><span style="color:#ff7733;">inherit </span><span style="color:#ffb454;">src</span><span style="color:#bfbab0cc;">;
+</span><span>
+</span><span>  </span><span style="color:#ffb454;">doCheck </span><span style="color:#f29668;">= </span><span style="color:#f29718;">true</span><span style="color:#bfbab0cc;">;
+</span><span>  </span><span style="color:#ffb454;">CARGO_BUILD_INCREMENTAL </span><span style="color:#f29668;">= </span><span style="color:#c2d94c;">&quot;false&quot;</span><span style="color:#bfbab0cc;">;
+</span><span>  </span><span style="color:#ffb454;">RUST_BACKTRACE </span><span style="color:#f29668;">= </span><span style="color:#c2d94c;">&quot;full&quot;</span><span style="color:#bfbab0cc;">;
+</span><span>  </span><span style="color:#ffb454;">copyLibs </span><span style="color:#f29668;">= </span><span style="color:#f29718;">false</span><span style="color:#bfbab0cc;">;
+</span><span>
+</span><span>  </span><span style="color:#ffb454;">overrideMain </span><span style="color:#f29668;">= </span><span style="color:#f29718;">old</span><span>: {                                           </span><span style="font-style:italic;color:#5c6773;"># 4
+</span><span>    </span><span style="color:#ffb454;">linkDb </span><span style="color:#f29668;">= </span><span style="color:#c2d94c;">&#39;&#39;
+</span><span style="color:#c2d94c;">      export DATABASE_URL=sqlite:</span><span style="font-style:italic;color:#bfbab0;">${</span><span style="font-style:italic;color:#f29718;">sqlx-db</span><span style="font-style:italic;color:#bfbab0;">}</span><span style="color:#c2d94c;">/db.sqlite3            # 5
+</span><span style="color:#c2d94c;">    &#39;&#39;</span><span style="color:#bfbab0cc;">;
+</span><span>
+</span><span>    </span><span style="color:#ffb454;">preBuildPhases </span><span style="color:#f29668;">= </span><span>[ </span><span style="color:#c2d94c;">&quot;linkDb&quot; </span><span>] </span><span style="color:#f29668;">++ </span><span>(</span><span style="color:#f29718;">old</span><span style="color:#f29668;">.</span><span style="color:#f29718;">preBuildPhases </span><span style="color:#f29668;">or </span><span>[ ])</span><span style="color:#bfbab0cc;">; </span><span style="font-style:italic;color:#5c6773;"># 6
+</span><span>  }</span><span style="color:#bfbab0cc;">;
+</span><span>}
+</span><span>
+</span></code></pre>
+<p>At a high level, Naersk builds the crate in two parts: one derivation builds all
+cargo dependencies on their own, and second derivation uses the artifacts from
+the first when building the actual crate source. This pattern can be extended by
+adding a <em>third</em> derivation which can prepare a SQLite database which <code>sqlx</code> can
+use for query validation.</p>
+<p>Let's break down the configuration above:</p>
+<ol>
+<li>We define a path to the cargo root. I prefer to keep the crate files in their
+own sub-directory so that builds don't get accidentally invalidated when
+other files get changed (e.g. extra nix files, READMEs, etc.). It is possible
+to use <code>cleanSourceWith</code> or <a rel="nofollow noreferrer" href="https://nixos.org/manual/nixpkgs/unstable/#sec-pkgs-nix-gitignore"><code>nix-gitignore</code></a> to filter out extra files, but
+it can get a bit fiddly at times, and easy to forget to allow/block list new
+files.</li>
+<li>Regardless of where the crate source is hosted, we want to make sure that the
+source we pass into <code>sqlx</code> <em>only contains the <code>migrations</code></em> directory. This
+will avoid having to rebuild the database unnecessarily.</li>
+<li>This command defines the script for having <code>sqlx</code> create the database and
+perform any migrations, using the source from step #2, and saving the result
+to the derivation's <code>$out</code> directory.</li>
+<li>Naersk will, by default, pass all of its inputs to <em>both</em> the crate and deps
+derivations. Here we use <code>overrideMain</code> such that our changes apply <em>only to
+the final crate derivation</em>. Since the deps derivation does not need to use
+<code>sqlx</code> we can avoid having to rebuild it if the database schema changes.</li>
+<li>We define our <code>linkDb</code> step which will set the <code>DATABASE_URL</code> variable that
+<code>sqlx</code> will use when doing the query validation.</li>
+<li>And lastly, we register the step as a <code>preBuildPhase</code> since it needs to run
+before all cargo build steps are invoked.</li>
+</ol>
+<p>This leaves us  with the following (minimal) dependency tree:</p>
+<figure>
+  <img
+    src="./deps.dot.svg"
+    alt="The mycrate derivation depends on the sqlx-db-prepare and mycrate-deps derivations along with the ./mycrate source. The mycrate-deps derivation depends only on the ./mycrate/Cargo.lock source. The sqlx-db-prepare derivation only depends on the ./mycrate/migrations source. The ./mycrate source &quot;depends&quot; (i.e. contains) the ./mycrate/Cargo.lock and ./mycrate/migrations sources."
+  />
+  <figcaption>
+    The arrows show which way the results "flow", from sources (represented in
+    boxes) to intermediate and final derivations (represented as circles).
+  </figcaption>
+<figure>
+<details>
+  <summary>Auxiliary example files can be found here.</summary>
+<pre data-lang="nix" style="background-color:#0f1419;color:#bfbab0;" class="language-nix "><code class="language-nix" data-lang="nix"><span style="font-style:italic;color:#5c6773;"># flake.nix
+</span><span>{
+</span><span>  </span><span style="color:#ffb454;">inputs </span><span style="color:#f29668;">= </span><span>{
+</span><span>    </span><span style="color:#ffb454;">nixpkgs</span><span>.</span><span style="color:#ffb454;">url </span><span style="color:#f29668;">= </span><span style="color:#c2d94c;">&quot;nixpkgs/nixpkgs-unstable&quot;</span><span style="color:#bfbab0cc;">;
+</span><span>    </span><span style="color:#ffb454;">naersk </span><span style="color:#f29668;">= </span><span>{
+</span><span>      </span><span style="color:#ffb454;">url </span><span style="color:#f29668;">= </span><span style="color:#c2d94c;">&quot;github:nix-community/naersk&quot;</span><span style="color:#bfbab0cc;">;
+</span><span>      </span><span style="color:#ffb454;">inputs</span><span>.</span><span style="color:#ffb454;">nixpkgs</span><span>.</span><span style="color:#ffb454;">follows </span><span style="color:#f29668;">= </span><span style="color:#c2d94c;">&quot;nixpkgs&quot;</span><span style="color:#bfbab0cc;">;
+</span><span>    }</span><span style="color:#bfbab0cc;">;
+</span><span>    </span><span style="color:#ffb454;">utils </span><span style="color:#f29668;">= </span><span>{
+</span><span>      </span><span style="color:#ffb454;">url </span><span style="color:#f29668;">= </span><span style="color:#c2d94c;">&quot;github:numtide/flake-utils&quot;</span><span style="color:#bfbab0cc;">;
+</span><span>      </span><span style="color:#ffb454;">inputs</span><span>.</span><span style="color:#ffb454;">nixpkgs</span><span>.</span><span style="color:#ffb454;">follows </span><span style="color:#f29668;">= </span><span style="color:#c2d94c;">&quot;nixpkgs&quot;</span><span style="color:#bfbab0cc;">;
+</span><span>    }</span><span style="color:#bfbab0cc;">;
+</span><span>  }</span><span style="color:#bfbab0cc;">;
+</span><span>
+</span><span>  </span><span style="color:#ffb454;">outputs </span><span style="color:#f29668;">= </span><span style="color:#f29718;">inputs</span><span>@{ </span><span style="color:#f29718;">self</span><span style="color:#f29668;">, </span><span style="color:#f29718;">nixpkgs</span><span style="color:#f29668;">, </span><span style="color:#f29718;">naersk</span><span style="color:#f29668;">, </span><span style="color:#f29718;">utils</span><span style="color:#f29668;">, ... </span><span>}:
+</span><span>    </span><span style="color:#f29718;">utils</span><span style="color:#f29668;">.</span><span style="color:#f29718;">lib</span><span style="color:#f29668;">.</span><span style="color:#f29718;">eachSystem </span><span>[ </span><span style="color:#c2d94c;">&quot;x86_64-linux&quot; </span><span>] (</span><span style="color:#f29718;">system</span><span>:
+</span><span>      </span><span style="color:#ff7733;">let
+</span><span>        </span><span style="color:#ffb454;">pkgs </span><span style="color:#f29668;">= </span><span style="color:#f07178;">import </span><span style="color:#f29718;">nixpkgs </span><span>{
+</span><span>          </span><span style="color:#ff7733;">inherit </span><span style="color:#ffb454;">system</span><span style="color:#bfbab0cc;">;
+</span><span>        }</span><span style="color:#bfbab0cc;">;
+</span><span>      </span><span style="color:#ff7733;">in
+</span><span>      {
+</span><span>        </span><span style="color:#ffb454;">defaultPackage </span><span style="color:#f29668;">= </span><span style="color:#f29718;">pkgs</span><span style="color:#f29668;">.</span><span style="color:#f29718;">callPackage </span><span style="color:#c2d94c;">./mycrate.nix </span><span>{
+</span><span>          </span><span style="color:#ff7733;">inherit </span><span style="color:#ffb454;">naersk</span><span style="color:#bfbab0cc;">;
+</span><span>        }</span><span style="color:#bfbab0cc;">;
+</span><span>
+</span><span>        </span><span style="color:#ffb454;">devShell </span><span style="color:#f29668;">= </span><span style="color:#f29718;">pkgs</span><span style="color:#f29668;">.</span><span style="color:#f29718;">mkShell </span><span>{
+</span><span>          </span><span style="color:#ffb454;">inputsFrom </span><span style="color:#f29668;">= </span><span>[
+</span><span>            </span><span style="color:#f29718;">self</span><span style="color:#f29668;">.</span><span style="color:#f29718;">defaultPackage</span><span style="color:#f29668;">.</span><span style="font-style:italic;color:#bfbab0;">${</span><span style="font-style:italic;color:#f29718;">system</span><span style="font-style:italic;color:#bfbab0;">}
+</span><span>          ]</span><span style="color:#bfbab0cc;">;
+</span><span>
+</span><span>          </span><span style="color:#ffb454;">buildInputs </span><span style="color:#f29668;">= </span><span style="color:#ff7733;">with </span><span style="color:#f29718;">pkgs</span><span>; [
+</span><span>            </span><span style="color:#f29718;">sqlx-cli
+</span><span>          ]</span><span style="color:#bfbab0cc;">;
+</span><span>        }</span><span style="color:#bfbab0cc;">;
+</span><span>      })</span><span style="color:#bfbab0cc;">;
+</span><span>}
+</span></code></pre>
+<pre data-lang="sh" style="background-color:#0f1419;color:#bfbab0;" class="language-sh "><code class="language-sh" data-lang="sh"><span style="font-style:italic;color:#5c6773;"># mycrate/.env
+</span><span>DATABASE_URL</span><span style="color:#f29668;">=</span><span style="color:#c2d94c;">sqlite:./db.sqlite3
+</span></code></pre>
+<pre data-lang="toml" style="background-color:#0f1419;color:#bfbab0;" class="language-toml "><code class="language-toml" data-lang="toml"><span style="font-style:italic;color:#5c6773;"># mycrate/Cargo.toml
+</span><span>[</span><span style="color:#59c2ff;">package</span><span>]
+</span><span style="color:#59c2ff;">name </span><span>= </span><span style="color:#c2d94c;">&quot;mycrate&quot;
+</span><span style="color:#59c2ff;">version </span><span>= </span><span style="color:#c2d94c;">&quot;0.1.0&quot;
+</span><span style="color:#59c2ff;">edition </span><span>= </span><span style="color:#c2d94c;">&quot;2021&quot;
+</span><span>
+</span><span>[</span><span style="color:#59c2ff;">dependencies</span><span style="color:#bfbab0cc;">.</span><span style="color:#59c2ff;">sqlx</span><span>]
+</span><span style="color:#59c2ff;">version </span><span>= </span><span style="color:#c2d94c;">&quot;0.5.9&quot;
+</span><span style="color:#59c2ff;">features </span><span>= [
+</span><span>  </span><span style="color:#c2d94c;">&quot;macros&quot;</span><span style="color:#bfbab0cc;">,
+</span><span>  </span><span style="color:#c2d94c;">&quot;migrate&quot;</span><span style="color:#bfbab0cc;">,
+</span><span>  </span><span style="color:#c2d94c;">&quot;runtime-tokio-rustls&quot;</span><span style="color:#bfbab0cc;">,
+</span><span>  </span><span style="color:#c2d94c;">&quot;sqlite&quot;</span><span style="color:#bfbab0cc;">,
+</span><span>]
+</span><span>
+</span><span>[</span><span style="color:#59c2ff;">dependencies</span><span style="color:#bfbab0cc;">.</span><span style="color:#59c2ff;">tokio</span><span>]
+</span><span style="color:#59c2ff;">version </span><span>= </span><span style="color:#c2d94c;">&quot;1.14&quot;
+</span><span style="color:#59c2ff;">features </span><span>= [
+</span><span>  </span><span style="color:#c2d94c;">&quot;macros&quot;</span><span style="color:#bfbab0cc;">,
+</span><span>]
+</span></code></pre>
+<pre data-lang="sql" style="background-color:#0f1419;color:#bfbab0;" class="language-sql "><code class="language-sql" data-lang="sql"><span style="font-style:italic;color:#5c6773;">/* mycrate/migrations/20211209212234_first.sql */
+</span><span style="color:#ff7733;">CREATE TABLE </span><span style="color:#ffb454;">users</span><span> (
+</span><span>  id </span><span style="color:#ff7733;">INTEGER PRIMARY KEY</span><span>,
+</span><span>  favorite_song </span><span style="color:#ff7733;">TEXT
+</span><span>)
+</span></code></pre>
+<pre data-lang="sql" style="background-color:#0f1419;color:#bfbab0;" class="language-sql "><code class="language-sql" data-lang="sql"><span style="font-style:italic;color:#5c6773;">/* mycrate/migrations/20211209212255_second.sql */
+</span><span style="color:#ff7733;">ALTER TABLE </span><span>users
+</span><span>ADD COLUMN favorite_color </span><span style="color:#ff7733;">TEXT</span><span>;
+</span></code></pre>
+<pre data-lang="rust" style="background-color:#0f1419;color:#bfbab0;" class="language-rust "><code class="language-rust" data-lang="rust"><span style="font-style:italic;color:#5c6773;">// mycrate/src/main.rs
+</span><span style="color:#ff7733;">use </span><span>sqlx</span><span style="color:#f29668;">::</span><span>{Connection</span><span style="color:#bfbab0cc;">,</span><span> SqliteConnection</span><span style="color:#bfbab0cc;">, </span><span>migrate</span><span style="color:#f29668;">::</span><span>Migrator}</span><span style="color:#bfbab0cc;">;
+</span><span>
+</span><span style="color:#ff7733;">static </span><span style="color:#f29718;">MIGRATOR</span><span style="color:#bfbab0cc;">:</span><span> Migrator </span><span style="color:#f29668;">= </span><span>sqlx</span><span style="color:#f29668;">::</span><span>migrate</span><span style="color:#f29668;">!</span><span>(</span><span style="color:#c2d94c;">&quot;./migrations&quot;</span><span>)</span><span style="color:#bfbab0cc;">;
+</span><span>
+</span><span style="color:#bfbab0cc;">#</span><span>[</span><span style="color:#ffb454;">tokio</span><span>::</span><span style="color:#ffb454;">main</span><span>]
+</span><span>async </span><span style="color:#ff7733;">fn </span><span style="color:#ffb454;">main</span><span>() {
+</span><span>    </span><span style="color:#ff7733;">let mut</span><span> conn </span><span style="color:#f29668;">= </span><span>SqliteConnection</span><span style="color:#f29668;">::</span><span>connect(</span><span style="color:#c2d94c;">&quot;sqlite:./db.sqlite3&quot;</span><span>)</span><span style="color:#f29668;">.</span><span>await
+</span><span>        </span><span style="color:#f29668;">.</span><span style="color:#f07178;">expect</span><span>(</span><span style="color:#c2d94c;">&quot;failed to get conn&quot;</span><span>)</span><span style="color:#bfbab0cc;">;
+</span><span>
+</span><span>    </span><span style="color:#f29718;">MIGRATOR
+</span><span>        </span><span style="color:#f29668;">.</span><span style="color:#f07178;">run</span><span>(</span><span style="color:#f29668;">&amp;</span><span style="color:#ff7733;">mut</span><span> conn)
+</span><span>        </span><span style="color:#f29668;">.</span><span>await
+</span><span>        </span><span style="color:#f29668;">.</span><span style="color:#f07178;">expect</span><span>(</span><span style="color:#c2d94c;">&quot;failed to run migrations&quot;</span><span>)</span><span style="color:#bfbab0cc;">;
+</span><span>
+</span><span>        </span><span style="color:#ff7733;">let</span><span> result </span><span style="color:#f29668;">= </span><span>sqlx</span><span style="color:#f29668;">::</span><span>query_scalar</span><span style="color:#f29668;">!</span><span>(</span><span style="color:#c2d94c;">&quot;SELECT count(*) FROM users WHERE favorite_color = &#39;green&#39;&quot;</span><span>)
+</span><span>            </span><span style="color:#f29668;">.</span><span style="color:#f07178;">fetch_one</span><span>(</span><span style="color:#f29668;">&amp;</span><span style="color:#ff7733;">mut</span><span> conn)
+</span><span>            </span><span style="color:#f29668;">.</span><span>await
+</span><span>            </span><span style="color:#f29668;">.</span><span style="color:#f07178;">expect</span><span>(</span><span style="color:#c2d94c;">&quot;failed to count users&quot;</span><span>)</span><span style="color:#bfbab0cc;">;
+</span><span>
+</span><span>    </span><span style="color:#f07178;">println!</span><span>(</span><span style="color:#c2d94c;">&quot;number of users: </span><span style="color:#f29718;">{}</span><span style="color:#c2d94c;">&quot;</span><span style="color:#bfbab0cc;">,</span><span> result)</span><span style="color:#bfbab0cc;">;
+</span><span>}
+</span></code></pre>
+</details>
+
+        </div>
+
+        
+        <div class="pagination">
+            <div class="pagination__title">
+                <span class="pagination__title-h"></span>
+                <hr />
+            </div>
+            <div class="pagination__buttons">
+                    <span class="button previous">
+                        <a href="https://ipetkov.dev/blog/installing-nixos-and-zfs-on-my-desktop/">
+                            <span class="button__icon">←</span>&nbsp;
+                            <span class="button__text">Installing NixOS and ZFS on my Desktop</span>
+                        </a>
+                    </span>
+                
+                
+                    <span class="button next">
+                        <a href="https://ipetkov.dev/blog/tips-and-tricks-for-nix-flakes/">
+                            <span class="button__text">Tips and Tricks for Nix Flakes</span>&nbsp;
+                            <span class="button__icon">→</span>
+                        </a>
+                    </span>
+                </div>
+        </div>
+    
+    </div>
+
+    </div>
+
+    
+  <footer class="footer">
+    <div class="footer__inner">
+      <div class="copyright">
+        <span>© 
+    2023
+ Ivan Petkov</span>
+
+        <span class="copyright-theme">
+          <span class="copyright-theme-sep">:: </span>
+          Theme based on <a href="https://github.com/pawroman/zola-theme-terminimal/">Terminimal</a> by pawroman
+        </span>
+      </div>
+    </div>
+  </footer>
+
+
+</div>
+</body>
+
+</html>

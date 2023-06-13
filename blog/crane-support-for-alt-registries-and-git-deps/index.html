@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <title>Crane Support for Alternative Registries and Git Dependencies | Ivan Petkov</title>
+    
+    <meta http-equiv="content-type" content="text/html; charset=utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1">
+    <meta name="robots" content="noodp"/>
+
+    <link rel="stylesheet" href="https://ipetkov.dev/style.css">
+    <link rel="stylesheet" href="https://ipetkov.dev/color/green.css">
+
+        <link rel="stylesheet" href="https://ipetkov.dev/color/background_blue.css">
+    
+    <link rel="stylesheet" href="https://ipetkov.dev/font-hack-subset.css">
+
+        <link rel="alternate" type="application/rss+xml" title="RSS" href="https://ipetkov.dev/rss.xml">
+    <meta property="og:title" content="Crane Support for Alternative Registries and Git Dependencies">
+<meta property="og:site_name" content="ipetkov.dev">
+<meta property="og:image" content="https://ipetkov.dev/favicon.png">
+<meta property="og:image:type" content="image/png">
+<meta property="og:image:alt" content="ipetkov.dev favicon">
+<meta property="og:url" content="https://ipetkov.dev/blog/crane-support-for-alt-registries-and-git-deps/">
+<meta property="og:description" content="Crane now supports building cargo projects with alternative registries and git dependencies!">
+<meta property="og:type" content="article">
+<link rel="icon" type="image/png" href="https://ipetkov.dev/favicon.png">
+<link rel="stylesheet" href="https://ipetkov.dev/overrides.css">
+<link rel="me" href="https://hachyderm.io/@ivan">
+<link rel="alternate" type="application/atom+xml" title="Ivan Petkov" href="https://ipetkov.dev/atom.xml"></head>
+
+<body class="">
+<div class="container">
+    
+    <header class="header">
+        <div class="header__inner">
+            <div class="header__logo">
+                    
+                <a href="https://ipetkov.dev" style="text-decoration: none;">
+                    <div class="logo">
+                      ipetkov.dev
+                    </div>
+                </a>
+            </div>
+        </div>
+
+        
+        <nav class="menu">
+            <ul class="menu__inner">
+                <li><a href="https://ipetkov.dev">home</a></li>
+            
+                <li><a href="https://ipetkov.dev/about">about</a></li>
+            
+                <li class="active"><a href="https://ipetkov.dev/blog">blog</a></li>
+            
+                <li><a href="https://ipetkov.dev/tags">tags</a></li>
+            </ul>
+        </nav>
+    
+    
+        
+    </header>
+    
+
+    <div class="content">
+        
+    <div class="post">
+        
+    <h1 class="post-title"><a href="https://ipetkov.dev/blog/crane-support-for-alt-registries-and-git-deps/">Crane Support for Alternative Registries and Git Dependencies</a></h1>
+    <div class="post-meta-inline">
+        
+    <span class="post-date">
+            2022-02-13
+        </span>
+
+    </div>
+
+    
+        <span class="post-tags-inline">
+                :: tags:&nbsp;
+                <a class="post-tag" href="https://ipetkov.dev/tags/nixos/">#NixOS</a>&nbsp;
+                <a class="post-tag" href="https://ipetkov.dev/tags/cargo/">#cargo</a>&nbsp;
+                <a class="post-tag" href="https://ipetkov.dev/tags/crane/">#crane</a>&nbsp;
+                <a class="post-tag" href="https://ipetkov.dev/tags/rust/">#rust</a></span>
+    
+
+        
+        <div class="post-content">
+            <p>Since the initial release of <a rel="nofollow noreferrer" href="https://github.com/ipetkov/crane">Crane</a>, I've been busy hacking on adding support
+for building projects which may pull in dependencies from alternative registries
+as well as git repositories. I wanted to share how it works, so let's dive right
+in!</p>
+<span id="continue-reading"></span><h1 id="alternative-registries">Alternative Registries</h1>
+<p>Although crates.io is the default registry for the majority of (public) Rust
+projects, cargo <em>does</em> allow for configuring any other crate registry/index to
+be used for dependencies. So far, the main use-case for alternative registries
+seems to be for privately publishing crates (e.g. on an enterprise network)
+judging by the lack of other <em>public</em> registries present in the ecosystem (well,
+except for <a rel="nofollow noreferrer" href="https://github.com/Hirevo/alexandrie">Alexandrie</a> which was very useful for my testing!).</p>
+<p>The workflow for vendoring crates is pretty much the same, regardless if the
+crates come from crates.io or some other index:</p>
+<ol>
+<li>We check the project's <code>.cargo/config.toml</code> file (if it exists) to see what
+registries are defined (specifically their unique index URL and the name used
+to link them to dependency definitions in <code>Cargo.toml</code>)</li>
+<li>We then crawl the <code>Cargo.lock</code> file to find out the name, version, checksum,
+and (registry) source (i.e. the index URL) for each dependency package</li>
+<li>Using this information we can construct the download URL for the crate and
+pull down the source to the Nix store. <strong>We'll come back to this step in a bit.</strong></li>
+<li>The sources are then grouped by the registry they come from, and are unpacked
+in a format that cargo can understand
+<ul>
+<li>The sources are basically tarballs which are extracted into directories
+named after the crate's name and version, along with some checksum metadata
+used by cargo to validate the sources are as expected.</li>
+</ul>
+</li>
+<li>Finally, we write some configuration which can instruct cargo to look at the
+directories we've prepared when building the project, instead of trying to
+access the network itself (which would fail if running inside of a sandboxed
+build).</li>
+</ol>
+<p>So how does cargo figure out what the download URL is for a particular crate?</p>
+<p>The <a rel="nofollow noreferrer" href="https://doc.rust-lang.org/cargo/reference/registries.html#index-format">specification</a> requires that the index contain a <code>config.json</code> file at its
+root which defines the endpoint and path that should be used for downloading
+crate sources. This definition can also contain placeholders (like the crate's
+name and version among other things) which need to be substituted to create the
+final URL used for fetching the source.</p>
+<p>How does Crane figure out the download configuration for each registry?
+Unfortunately, we <em>have to tell it</em>. We can take a look at a <a rel="nofollow noreferrer" href="https://github.com/ipetkov/crane/blob/fc7a94f841347c88f2cb44217b2a3faa93e2a0b2/examples/alt-registry/flake.nix#L25-L47">full example</a> in
+context, but in summary, we have two options to take:</p>
+<ol>
+<li>The first option is to straight up copy the configuration out of the index's
+<code>config.json</code> file and tell Crane about it. This is the simplest and most
+lightweight option we can employ, especially if the download endpoint and
+path virtually never change.<pre data-lang="nix" style="background-color:#0f1419;color:#bfbab0;" class="language-nix "><code class="language-nix" data-lang="nix"><span style="color:#f29718;">craneLibOrig </span><span style="color:#ff3333;">= </span><span style="color:#f29718;">crane</span><span style="color:#f29668;">.</span><span style="color:#f29718;">lib</span><span style="color:#f29668;">.</span><span style="font-style:italic;color:#bfbab0;">${</span><span style="font-style:italic;color:#f29718;">system</span><span style="font-style:italic;color:#bfbab0;">}</span><span style="color:#ff3333;">;
+</span><span style="color:#f29718;">craneLib </span><span style="color:#ff3333;">= </span><span style="color:#f29718;">craneLibOrig</span><span style="color:#f29668;">.</span><span style="color:#f29718;">appendCrateRegistries </span><span>[
+</span><span>  (</span><span style="color:#f29718;">craneLibOrig</span><span style="color:#f29668;">.</span><span style="color:#f29718;">registryFromDownloadUrl </span><span>{
+</span><span>    </span><span style="color:#ffb454;">indexUrl </span><span style="color:#f29668;">= </span><span style="color:#c2d94c;">&quot;https://github.com/Hirevo/alexandrie-index&quot;</span><span style="color:#bfbab0cc;">;
+</span><span>    </span><span style="color:#ffb454;">dl </span><span style="color:#f29668;">= </span><span style="color:#c2d94c;">&quot;https://crates.polomack.eu/api/v1/crates/{crate}/{version}/download&quot;</span><span style="color:#bfbab0cc;">;
+</span><span>  })
+</span><span>]</span><span style="color:#ff3333;">;
+</span></code></pre>
+</li>
+<li>The second option is to tell Crane about a particular revision of the index
+and let it figure out the download template on its own. This option has the
+benefit of having a single canonical source of truth (without copying URLs
+around by hand), and, if the download endpoint or path changes from time to
+time, it can easily be remedied by updating the index snapshot to a newer
+revision (which is especially nice if it needs to be automated). The cost of
+this option, however, is needing to check out the <em>entire index</em> at that
+revision and put a copy of it in the store before we can evaluate the
+derivation. Note that this revision only needs to be updated if the
+<code>config.json</code> file changes, so it is safe to pin to a version for as long as
+that takes.<pre data-lang="nix" style="background-color:#0f1419;color:#bfbab0;" class="language-nix "><code class="language-nix" data-lang="nix"><span style="color:#f29718;">craneLibOrig </span><span style="color:#ff3333;">= </span><span style="color:#f29718;">crane</span><span style="color:#f29668;">.</span><span style="color:#f29718;">lib</span><span style="color:#f29668;">.</span><span style="font-style:italic;color:#bfbab0;">${</span><span style="font-style:italic;color:#f29718;">system</span><span style="font-style:italic;color:#bfbab0;">}</span><span style="color:#ff3333;">;
+</span><span style="color:#f29718;">craneLib </span><span style="color:#ff3333;">= </span><span style="color:#f29718;">craneLibOrig</span><span style="color:#f29668;">.</span><span style="color:#f29718;">appendCrateRegistries </span><span>[
+</span><span>  (</span><span style="color:#f29718;">craneLibOrig</span><span style="color:#f29668;">.</span><span style="color:#f29718;">registryFromGitIndex </span><span>{
+</span><span>    </span><span style="color:#ffb454;">indexUrl </span><span style="color:#f29668;">= </span><span style="color:#c2d94c;">&quot;https://github.com/Hirevo/alexandrie-index&quot;</span><span style="color:#bfbab0cc;">;
+</span><span>    </span><span style="color:#ffb454;">rev </span><span style="color:#f29668;">= </span><span style="color:#c2d94c;">&quot;90df25daf291d402d1ded8c32c23d5e1498c6725&quot;</span><span style="color:#bfbab0cc;">;
+</span><span>  })
+</span><span>]</span><span style="color:#ff3333;">;
+</span></code></pre>
+</li>
+</ol>
+<p>Technically, we could try to automate this away completely by always fetching
+the latest version of the index and looking at the configuration before
+downloading any crate sources. Even ignoring issues with requiring impure
+evaluations to make this work, this would make for a really bad default from a
+performance standpoint.</p>
+<p>You see, cargo keeps a checked out version of every registry index that has ever
+been used (usually somewhere in your home directory). It used during dependency
+resolution (such as what are the latest published/yanked version, etc.) and
+incrementally fetched as needed.</p>
+<p>When we build with Nix, however, we don't care about re-resolving dependencies
+since the Cargo.lock file already pins everything into place; checking out the
+entire index to the store, just to peek at a small configuration file and throw
+the results away seems wasteful. Even the store is regularly cleaned out, we
+would still need to fetch the index again and again any time the derivation is
+evaluated. That's a lot of wasted bandwidth, especially as the index accrues
+newly published crates. And lets not forget that Nix doesn't keep the repository
+around such that it can be incrementally fetched, either.</p>
+<p>I really wish this paper cut experience of having to manually specify
+alternative registries can be improved in the future, but for now, it seems like
+the best choice available.</p>
+<h1 id="git-dependencies">Git Dependencies</h1>
+<p>Vendoring crate sources from git repositories is roughly the same as vendoring
+from registries:</p>
+<ol>
+<li>We crawl the <code>Cargo.lock</code> file to look for any packages originating from git
+sources, and find out the repository's URL as well as the revision that has
+been locked</li>
+<li>We then pass the git URL and revision to Nix which will pull down the source
+for us
+<ul>
+<li>Note: this does not pull down the entire repository, we <em>only</em> get a
+checkout of the revision.</li>
+<li>Fetching a git repository is not reproducible, as any new commit or branch
+would add new data which would result in invalidating all of our build
+caches</li>
+</ul>
+</li>
+<li>The one main difference between a git dependency and a registry tarball is
+that the tarball always contains a single crate. The git repository could
+contain an entire workspace of crates. To handle this, we crawl the source
+looking for <code>Cargo.toml</code> files as a proxy for identifying what crates are
+present.
+<ul>
+<li>Looking for <code>Cargo.toml</code> is a simple heuristic which goes a long way.
+Although there can be a false-positive (we vendor a crate not part of the
+actual workspace), we cannot have a false-negative (accidentally ignore a
+real crate) since you cannot define a crate without a <code>Cargo.toml</code> file.</li>
+<li>Ultimately, cargo will ignore the crates it does not care about which gives
+us some flexibility here.</li>
+<li>Why not ask <code>cargo metadata</code> to tell us about the workspace members?
+<ul>
+<li>Doing so will make cargo try to pull down the sources from the network to
+tell us about them. Since this whole exercise is to pull the sources down
+<em>for</em> cargo, we need to avoid this chicken-egg problem somehow.</li>
+</ul>
+</li>
+<li>Why not look at the <code>[workspace]</code> definition in the <code>Cargo.toml</code> file if it
+exists?
+<ul>
+<li>Cargo supports glob patterns both for including <strong>and</strong> excluding
+members. Re-implementing this logic ourselves is way too overkill when a
+simple search can get us where we need.</li>
+</ul>
+</li>
+</ul>
+</li>
+<li>We then transform the crates into the same vendor directory structure as for
+registries (i.e. each crate goes into its own sub-directory using the crate's
+name and version).</li>
+<li>And finally, we generate some configuration that can instruct cargo to look
+at these vendored directories as is appropriate.</li>
+</ol>
+<p>One interesting thing to note that whereas the &quot;unique unit of vendoring&quot; for a
+registry is the <em>index itself</em>, for git dependencies it is <em>the specific
+revision of a particular repository</em>. In other words, all crates coming from the
+same registry/index are vendored in one directory which is registered as a
+single source replacement with cargo. All crates coming from the same git
+repository <strong>and</strong> revision are also vendored in one directory and registered as
+a single source replacement with cargo, but more git revisions in the dependency
+closure will result in more cargo sources behind the scenes.</p>
+<p>There's several benefits to this approach:</p>
+<ol>
+<li>First and foremost we don't have to care (or worry) about whether there is a
+name/version collision between crates coming from a registry or from a git
+repository. Each will get their own unique &quot;vendor space&quot; for which we know
+is impossible to have collisions!</li>
+<li>Even if we do get a collision, we can avoid the risks of having to establish
+which source would take precedence! We simply make the sources <em>available</em> to
+cargo, and it is free to use (or ignore them) based on how the project
+authors' have dictated via the <code>Cargo.toml</code> and <code>Cargo.lock</code> files
+<ul>
+<li>To illustrate this point a bit further, consider the following: you may
+have a workspace which may contain an auxillary crate used for running
+tests. Perhaps this crate pins to some ancient git revision of a dependency
+crate to perform some compatibility testing.</li>
+<li>We wouldn't want this dependency to get selected when building our
+production binaries as we would likely want to use the latest and greatest
+version of that dependency as pinned by the <code>Cargo.lock</code> file</li>
+<li>At the same time, we wouldn't want to ignore the pinned git version as that
+could break the tests that we thought were running</li>
+<li>All in all, this means that cargo will behave the same when running under
+Nix as it does outside of it, without any unexpected surprises!</li>
+</ul>
+</li>
+</ol>
+<p>Oh and the other cool thing about this implementation is there is nothing to
+configure! Everything should Just Work™ out of the box :)</p>
+<h1 id="feedback">Feedback</h1>
+<p>As always, if something doesn't seem quite right or you have any feedback, feel
+free to let me know on the <a rel="nofollow noreferrer" href="https://github.com/ipetkov/crane">project repo</a>!</p>
+
+        </div>
+
+        
+        <div class="pagination">
+            <div class="pagination__title">
+                <span class="pagination__title-h"></span>
+                <hr />
+            </div>
+            <div class="pagination__buttons">
+                    <span class="button previous">
+                        <a href="https://ipetkov.dev/blog/introducing-crane/">
+                            <span class="button__icon">←</span>&nbsp;
+                            <span class="button__text">Introducing Crane: Composable and Cacheable Builds with Cargo and Nix</span>
+                        </a>
+                    </span>
+                
+                
+                    <span class="button next">
+                        <a href="https://ipetkov.dev/blog/steam-deck-first-impressions/">
+                            <span class="button__text">Steam Deck First Impressions</span>&nbsp;
+                            <span class="button__icon">→</span>
+                        </a>
+                    </span>
+                </div>
+        </div>
+    
+    </div>
+
+    </div>
+
+    
+  <footer class="footer">
+    <div class="footer__inner">
+      <div class="copyright">
+        <span>© 
+    2023
+ Ivan Petkov</span>
+
+        <span class="copyright-theme">
+          <span class="copyright-theme-sep">:: </span>
+          Theme based on <a href="https://github.com/pawroman/zola-theme-terminimal/">Terminimal</a> by pawroman
+        </span>
+      </div>
+    </div>
+  </footer>
+
+
+</div>
+</body>
+
+</html>

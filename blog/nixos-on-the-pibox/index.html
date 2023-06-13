@@ -1,0 +1,869 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <title>NixOS on the PiBox | Ivan Petkov</title>
+    
+    <meta http-equiv="content-type" content="text/html; charset=utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1">
+    <meta name="robots" content="noodp"/>
+
+    <link rel="stylesheet" href="https://ipetkov.dev/style.css">
+    <link rel="stylesheet" href="https://ipetkov.dev/color/green.css">
+
+        <link rel="stylesheet" href="https://ipetkov.dev/color/background_blue.css">
+    
+    <link rel="stylesheet" href="https://ipetkov.dev/font-hack-subset.css">
+
+        <link rel="alternate" type="application/rss+xml" title="RSS" href="https://ipetkov.dev/rss.xml">
+    <meta property="og:title" content="NixOS on the PiBox">
+<meta property="og:site_name" content="ipetkov.dev">
+<meta property="og:image" content="https://ipetkov.dev/favicon.png">
+<meta property="og:image:type" content="image/png">
+<meta property="og:image:alt" content="ipetkov.dev favicon">
+<meta property="og:url" content="https://ipetkov.dev/blog/nixos-on-the-pibox/">
+<meta property="og:description" content="NixOS, LUKS, and ZFS on the PiBox">
+<meta property="og:type" content="article">
+<link rel="icon" type="image/png" href="https://ipetkov.dev/favicon.png">
+<link rel="stylesheet" href="https://ipetkov.dev/overrides.css">
+<link rel="me" href="https://hachyderm.io/@ivan">
+<link rel="alternate" type="application/atom+xml" title="Ivan Petkov" href="https://ipetkov.dev/atom.xml"></head>
+
+<body class="">
+<div class="container">
+    
+    <header class="header">
+        <div class="header__inner">
+            <div class="header__logo">
+                    
+                <a href="https://ipetkov.dev" style="text-decoration: none;">
+                    <div class="logo">
+                      ipetkov.dev
+                    </div>
+                </a>
+            </div>
+        </div>
+
+        
+        <nav class="menu">
+            <ul class="menu__inner">
+                <li><a href="https://ipetkov.dev">home</a></li>
+            
+                <li><a href="https://ipetkov.dev/about">about</a></li>
+            
+                <li class="active"><a href="https://ipetkov.dev/blog">blog</a></li>
+            
+                <li><a href="https://ipetkov.dev/tags">tags</a></li>
+            </ul>
+        </nav>
+    
+    
+        
+    </header>
+    
+
+    <div class="content">
+        
+    <div class="post">
+        
+    <h1 class="post-title"><a href="https://ipetkov.dev/blog/nixos-on-the-pibox/">NixOS on the PiBox</a></h1>
+    <div class="post-meta-inline">
+        
+    <span class="post-date">
+            2023-02-19
+        </span>
+
+    </div>
+
+    
+        <span class="post-tags-inline">
+                :: tags:&nbsp;
+                <a class="post-tag" href="https://ipetkov.dev/tags/nixos/">#NixOS</a>&nbsp;
+                <a class="post-tag" href="https://ipetkov.dev/tags/luks/">#luks</a>&nbsp;
+                <a class="post-tag" href="https://ipetkov.dev/tags/raspberrypi/">#raspberrypi</a>&nbsp;
+                <a class="post-tag" href="https://ipetkov.dev/tags/zfs/">#zfs</a></span>
+    
+
+        
+        <div class="post-content">
+            <p>The <a rel="nofollow noreferrer" href="https://web.archive.org/web/20230219020959/https://pibox.io/">PiBox</a> is a small personal server powered by a Raspberry Pi CM4. It comes
+in a nice enclosure which has a fan, an LCD screen, and has two bays for SATA
+SSDs. <a rel="nofollow noreferrer" href="https://web.archive.org/web/20230219021025/https://kubesail.com/homepage">KubeSail</a>, the company behind it, offers backup storage and proxy traffic
+as a service. They also support a bunch of templates for easily self hosting
+apps like Jellyfin or NextCloud.</p>
+<p>But, since I'm already very comfortable with NixOS and deploy a bunch of custom
+workloads with it, I wanted to try using it instead of the OS that ships with
+the PiBox.</p>
+<p>Here's how I went about it, and how you can too!</p>
+<span id="continue-reading"></span><h1 id="preparing-the-cm4-for-boot">Preparing the CM4 for boot</h1>
+<p>Although the CM4 (technically) supports booting from a variety of different
+targets besides its EEPROM (like an NVMe drive, a USB stick, and even the
+network!), it doesn't actually support booting from a SATA drive. I guess most
+people either boot from a USB drive or go all in with an NVMe drive, so for
+whatever reason direct boot from SATA was never designed into the firmware. The
+good thing is we can still boot from the EEPROM itself but keep the OS and all
+other data on the SSD drive, so that's what we'll do here.</p>
+<p>The first step is to optionally update the board's firmware and change the boot
+order. The default configuration tries a whole bunch of boot options which
+likely will never be used which means it takes it a while to actually boot.</p>
+<p>We'll start by <a rel="nofollow noreferrer" href="https://web.archive.org/web/20230219020754/https://docs.kubesail.com/guides/pibox/rpiboot/">opening up the PiBox and carefully separating the carrier board from
+the backplane</a>,
+then flip the &quot;boot mode&quot; switch to <code>rpiboot</code> and connect the board with a USB-C
+cable to a PC. To change the boot config we'll need to use the raspberrypi
+<code>usbboot</code> toolkit:</p>
+<pre data-lang="sh" style="background-color:#0f1419;color:#bfbab0;" class="language-sh "><code class="language-sh" data-lang="sh"><span style="color:#ffb454;">git</span><span> clone https://github.com/raspberrypi/usbboot </span><span style="font-style:italic;color:#39bae6;">~</span><span>/usbboot
+</span><span style="color:#f07178;">cd </span><span style="font-style:italic;color:#39bae6;">~</span><span>/usbboot/recovery
+</span><span>
+</span><span style="font-style:italic;color:#5c6773;"># Edit the `boot.conf` file and set the `BOOT_ORDER` variable
+</span><span style="font-style:italic;color:#5c6773;"># I noticed that if the &quot;SD&quot; (same as the EEPROM on CM4) option (1) is set to
+</span><span style="font-style:italic;color:#5c6773;"># run first the board doesn&#39;t actually boot from it but tries everything else
+</span><span style="font-style:italic;color:#5c6773;"># first. Maybe there&#39;s some kind of delay the hardware needs to warm up but I
+</span><span style="font-style:italic;color:#5c6773;"># found if I set `BOOT_ORDER=0xf514` then things work pretty smoothly. This
+</span><span style="font-style:italic;color:#5c6773;"># configuration basically tries things in the following order:
+</span><span style="font-style:italic;color:#5c6773;"># - 4: USB mass storage device: don&#39;t care about this, try anything first
+</span><span style="font-style:italic;color:#5c6773;"># - 1: SD card (or the EEPROM for the CM4), where we would normally boot from
+</span><span style="font-style:italic;color:#5c6773;"># - 5: BCM-USB: boot from the board hardware headers or something idk
+</span><span style="font-style:italic;color:#5c6773;"># - f: Restart if all else fails
+</span><span style="font-style:italic;color:#5c6773;">#
+</span><span style="font-style:italic;color:#5c6773;"># Also note that you can keep `ENABLE_SELF_UPDATE=1` to allow updating the
+</span><span style="font-style:italic;color:#5c6773;"># firmware directly from a booted OS in the future without having to reconnect
+</span><span style="font-style:italic;color:#5c6773;"># to the board like we are doing here
+</span><span style="color:#ffb454;">vim</span><span> boot.conf
+</span><span>
+</span><span style="font-style:italic;color:#5c6773;"># Then apply the changes and flash the firmware, if it went well the lights
+</span><span style="font-style:italic;color:#5c6773;"># should start blinking red and green
+</span><span style="color:#ffb454;">./update-pieeprom.sh
+</span><span style="color:#ffb454;">nix</span><span> shell nixpkgs#rpiboot</span><span style="color:#f29718;"> --command</span><span> sudo rpiboot</span><span style="color:#f29718;"> -d</span><span> .
+</span></code></pre>
+<p>Disconnect and reconnect the board to the PC again. This time we'll mount the
+CM4's EEPROM storage as a generic device we can manipulate from the PC.</p>
+<pre data-lang="sh" style="background-color:#0f1419;color:#bfbab0;" class="language-sh "><code class="language-sh" data-lang="sh"><span style="color:#ffb454;">nix</span><span> shell nixpkgs#rpiboot</span><span style="color:#f29718;"> --command</span><span> sudo rpiboot</span><span style="color:#f29718;"> -d </span><span style="font-style:italic;color:#39bae6;">~</span><span>/usbboot/mass-storage-gadget
+</span></code></pre>
+<pre data-lang="sh" style="background-color:#0f1419;color:#bfbab0;" class="language-sh "><code class="language-sh" data-lang="sh"><span style="font-style:italic;color:#5c6773;"># The disk should show up as something like /dev/sda, though if the system
+</span><span style="font-style:italic;color:#5c6773;"># already has other disks present it might show up as /dev/sdb or /dev/sdc, etc.
+</span><span style="font-style:italic;color:#5c6773;"># so DOUBLE CHECK THIS!
+</span><span>SD_DISK</span><span style="color:#f29668;">=</span><span style="color:#c2d94c;">&quot;/dev/sd...&quot;
+</span></code></pre>
+<blockquote>
+<p>Note: I noticed that sometimes the mount would randomly disconnect and
+reconnect on its own (usually showing up as a <em>new</em> device like <code>/dev/sdb</code> if
+it was previously <code>/dev/sda</code>). Not sure if this was due to my cable connection
+or something else, so I highly recommend double checking things before doing
+any operations on the EEPROM.</p>
+</blockquote>
+<p>Next we'll partition the EEPROM and initialize a file system on it:</p>
+<pre data-lang="sh" style="background-color:#0f1419;color:#bfbab0;" class="language-sh "><code class="language-sh" data-lang="sh"><span style="color:#ffb454;">nix</span><span> shell nixpkgs#parted</span><span style="color:#f29718;"> --command</span><span> sudo parted</span><span style="color:#f29718;"> --align</span><span> optimal </span><span style="color:#c2d94c;">&quot;$</span><span>{SD_DISK}</span><span style="color:#c2d94c;">&quot; </span><span style="color:#f29668;">&lt;&lt;</span><span style="color:#ff7733;">EOF
+</span><span style="color:#c2d94c;">    mklabel gpt \
+</span><span style="color:#c2d94c;">    mkpart primary fat32 1MiB 100% \
+</span><span style="color:#c2d94c;">    name 1 &#39;EFI system partition&#39; \
+</span><span style="color:#c2d94c;">    set 1 esp on \
+</span><span style="color:#c2d94c;">    print \
+</span><span style="color:#c2d94c;">    quit
+</span><span style="color:#ff7733;">EOF
+</span><span>
+</span><span style="color:#ffb454;">nix</span><span> shell nixpkgs#dosfstools</span><span style="color:#f29718;"> --command</span><span> sudo mkfs.vfat </span><span style="color:#c2d94c;">&quot;$</span><span>{SD_DISK}</span><span style="color:#c2d94c;">1&quot;
+</span><span>
+</span><span style="font-style:italic;color:#5c6773;"># Write down UUIDs for what will become our boot partition
+</span><span style="font-style:italic;color:#5c6773;"># and add it to the NixOS config
+</span><span style="color:#ffb454;">ls</span><span style="color:#f29718;"> -l</span><span> /dev/disk/by-uuid
+</span></code></pre>
+<p>Finally, disconnect the CM4, but don't reassemble it quite yet as we'll write
+some more data to it later!</p>
+<h1 id="preparing-a-builder-vm">Preparing a builder VM</h1>
+<p>I had originally set out to plug the new SSD into my desktop and do the
+partitioning and installation from there, in the hope that it would be faster
+and save me various reboot and debug cycles. Even though I have binfmt enabled
+(let's me run aarch64 binaries via QEMU) and I can successfully do remote
+aarch64 deployments from my x86 desktop via <code>nixos-rebuild switch</code>, I was not
+able to get <code>nixos-install</code> to work despite my best efforts.</p>
+<p>I was also unsuccessful in booting the PiBox from a USB stick (though maybe I
+made a mistake with the firmware config or my USB image). I briefly considered
+flashing the NixOS installer directly on the EEPROM and doing the installation
+from there, but I wasn't sure if it could cope with doing the installation
+directly on the partition it was booted from.</p>
+<p>Instead I decided to spin up a quick QEMU VM and trick <code>nixos-install</code> into
+working. To save you some effort, copy the config below a <code>flake.nix</code> in a new
+directory, then <code>nix build -L &amp;&amp; ./result</code>.</p>
+<pre data-lang="nix" style="background-color:#0f1419;color:#bfbab0;" class="language-nix "><code class="language-nix" data-lang="nix"><span>{
+</span><span>  </span><span style="color:#ffb454;">inputs</span><span>.</span><span style="color:#ffb454;">nixpkgs</span><span>.</span><span style="color:#ffb454;">url </span><span style="color:#f29668;">= </span><span style="color:#c2d94c;">&quot;github:NixOS/nixpkgs/nixos-unstable&quot;</span><span style="color:#bfbab0cc;">;
+</span><span>
+</span><span>  </span><span style="color:#ffb454;">outputs </span><span style="color:#f29668;">= </span><span>{ </span><span style="color:#f29718;">self</span><span style="color:#f29668;">, </span><span style="color:#f29718;">nixpkgs </span><span>}:
+</span><span>    </span><span style="color:#ff7733;">let
+</span><span>      </span><span style="color:#ffb454;">DISK </span><span style="color:#f29668;">= </span><span style="color:#f07178;">throw </span><span style="color:#c2d94c;">&quot;REPLACE ME: /dev/disk/by-id/ata-...&quot;</span><span style="color:#bfbab0cc;">;
+</span><span>      </span><span style="color:#ffb454;">sshKey </span><span style="color:#f29668;">= </span><span style="color:#f07178;">throw </span><span style="color:#c2d94c;">&quot;REPLACE ME: ssh-ed25519 ...&quot;</span><span style="color:#bfbab0cc;">;
+</span><span>
+</span><span>      </span><span style="color:#ffb454;">pkgs </span><span style="color:#f29668;">= </span><span style="color:#f07178;">import </span><span style="color:#f29718;">nixpkgs </span><span>{
+</span><span>        </span><span style="color:#ffb454;">system </span><span style="color:#f29668;">= </span><span style="color:#c2d94c;">&quot;x86_64-linux&quot;</span><span style="color:#bfbab0cc;">;
+</span><span>      }</span><span style="color:#bfbab0cc;">;
+</span><span>      </span><span style="color:#ffb454;">pkgsAarch64 </span><span style="color:#f29668;">= </span><span style="color:#f07178;">import </span><span style="color:#f29718;">nixpkgs </span><span>{
+</span><span>        </span><span style="color:#ffb454;">system </span><span style="color:#f29668;">= </span><span style="color:#c2d94c;">&quot;aarch64-linux&quot;</span><span style="color:#bfbab0cc;">;
+</span><span>      }</span><span style="color:#bfbab0cc;">;
+</span><span>
+</span><span>      </span><span style="color:#ffb454;">isoConfiguration </span><span style="color:#f29668;">= </span><span style="color:#f29718;">nixpkgs</span><span style="color:#f29668;">.</span><span style="color:#f29718;">lib</span><span style="color:#f29668;">.</span><span style="color:#f29718;">nixosSystem </span><span>{
+</span><span>        </span><span style="color:#ffb454;">system </span><span style="color:#f29668;">= </span><span style="color:#c2d94c;">&quot;aarch64-linux&quot;</span><span style="color:#bfbab0cc;">;
+</span><span>        </span><span style="color:#ffb454;">modules </span><span style="color:#f29668;">= </span><span>[
+</span><span>          ({ </span><span style="color:#f29718;">modulesPath</span><span style="color:#f29668;">, ... </span><span>}: {
+</span><span>            </span><span style="color:#ffb454;">imports </span><span style="color:#f29668;">= </span><span>[
+</span><span>              </span><span style="color:#c2d94c;">&quot;</span><span style="font-style:italic;color:#bfbab0;">${</span><span style="font-style:italic;color:#f29718;">modulesPath</span><span style="font-style:italic;color:#bfbab0;">}</span><span style="color:#c2d94c;">/installer/cd-dvd/iso-image.nix&quot;
+</span><span>            ]</span><span style="color:#bfbab0cc;">;
+</span><span>            </span><span style="color:#ffb454;">isoImage</span><span>.</span><span style="color:#ffb454;">makeEfiBootable </span><span style="color:#f29668;">= </span><span style="color:#f29718;">true</span><span style="color:#bfbab0cc;">;
+</span><span>
+</span><span>            </span><span style="color:#ffb454;">boot</span><span>.</span><span style="color:#ffb454;">supportedFilesystems </span><span style="color:#f29668;">= </span><span>[ </span><span style="color:#c2d94c;">&quot;zfs&quot; </span><span>]</span><span style="color:#bfbab0cc;">;
+</span><span>
+</span><span>            </span><span style="color:#ffb454;">networking</span><span>.</span><span style="color:#ffb454;">hostId </span><span style="color:#f29668;">= </span><span style="color:#c2d94c;">&quot;a7dbd851&quot;</span><span style="color:#bfbab0cc;">; </span><span style="font-style:italic;color:#5c6773;"># random value
+</span><span>
+</span><span>            </span><span style="color:#ffb454;">environment</span><span>.</span><span style="color:#ffb454;">systemPackages </span><span style="color:#f29668;">= </span><span style="color:#ff7733;">with </span><span style="color:#f29718;">pkgsAarch64</span><span>; [
+</span><span>              </span><span style="color:#f29718;">coreutils
+</span><span>              </span><span style="color:#f29718;">cryptsetup
+</span><span>              </span><span style="color:#f29718;">dosfstools
+</span><span>              </span><span style="color:#f29718;">gitMinimal
+</span><span>              </span><span style="color:#f29718;">htop
+</span><span>              </span><span style="color:#f29718;">openssh
+</span><span>              </span><span style="color:#f29718;">parted
+</span><span>              </span><span style="color:#f29718;">smartmontools
+</span><span>              </span><span style="color:#f29718;">unzip
+</span><span>              </span><span style="color:#f29718;">util-linux
+</span><span>              </span><span style="color:#f29718;">wget
+</span><span>              </span><span style="color:#f29718;">zfs
+</span><span>            ]</span><span style="color:#bfbab0cc;">;
+</span><span>
+</span><span>            </span><span style="color:#ffb454;">services</span><span>.</span><span style="color:#ffb454;">openssh</span><span>.</span><span style="color:#ffb454;">enable </span><span style="color:#f29668;">= </span><span style="color:#f29718;">true</span><span style="color:#bfbab0cc;">;
+</span><span>            </span><span style="color:#ffb454;">users</span><span>.</span><span style="color:#ffb454;">users</span><span>.</span><span style="color:#ffb454;">root</span><span>.</span><span style="color:#ffb454;">openssh</span><span>.</span><span style="color:#ffb454;">authorizedKeys</span><span>.</span><span style="color:#ffb454;">keys </span><span style="color:#f29668;">= </span><span>[ </span><span style="color:#f29718;">sshKey </span><span>]</span><span style="color:#bfbab0cc;">;
+</span><span>          })
+</span><span>        ]</span><span style="color:#bfbab0cc;">;
+</span><span>      }</span><span style="color:#bfbab0cc;">;
+</span><span>
+</span><span>      </span><span style="color:#ffb454;">iso </span><span style="color:#f29668;">= </span><span style="color:#f29718;">isoConfiguration</span><span style="color:#f29668;">.</span><span style="color:#f29718;">config</span><span style="color:#f29668;">.</span><span style="color:#f29718;">system</span><span style="color:#f29668;">.</span><span style="color:#f29718;">build</span><span style="color:#f29668;">.</span><span style="color:#f29718;">isoImage</span><span style="color:#bfbab0cc;">;
+</span><span>      </span><span style="color:#ffb454;">vmScript </span><span style="color:#f29668;">= </span><span style="color:#f29718;">pkgs</span><span style="color:#f29668;">.</span><span style="color:#f29718;">writeScript </span><span style="color:#c2d94c;">&quot;run-nixos-vm&quot; &#39;&#39;
+</span><span style="color:#c2d94c;">        #!</span><span style="font-style:italic;color:#bfbab0;">${</span><span style="font-style:italic;color:#f29718;">pkgs</span><span style="font-style:italic;color:#f29668;">.</span><span style="font-style:italic;color:#f29718;">runtimeShell</span><span style="font-style:italic;color:#bfbab0;">}
+</span><span style="color:#c2d94c;">        </span><span style="font-style:italic;color:#bfbab0;">${</span><span style="font-style:italic;color:#f29718;">pkgs</span><span style="font-style:italic;color:#f29668;">.</span><span style="font-style:italic;color:#f29718;">qemu</span><span style="font-style:italic;color:#bfbab0;">}</span><span style="color:#c2d94c;">/bin/qemu-system-aarch64 \
+</span><span style="color:#c2d94c;">          -machine virt,gic-version=max \
+</span><span style="color:#c2d94c;">          -cpu max \
+</span><span style="color:#c2d94c;">          -m 4G \
+</span><span style="color:#c2d94c;">          -smp 4 \
+</span><span style="color:#c2d94c;">          -drive file=$(echo </span><span style="font-style:italic;color:#bfbab0;">${</span><span style="font-style:italic;color:#f29718;">iso</span><span style="font-style:italic;color:#bfbab0;">}</span><span style="color:#c2d94c;">/iso/*.iso),format=raw,readonly=on \
+</span><span style="color:#c2d94c;">          -drive file=</span><span style="font-style:italic;color:#bfbab0;">${</span><span style="font-style:italic;color:#f29718;">DISK</span><span style="font-style:italic;color:#bfbab0;">}</span><span style="color:#c2d94c;">,format=raw,readonly=off \
+</span><span style="color:#c2d94c;">          -nic user,hostfwd=tcp::3333-:22 \
+</span><span style="color:#c2d94c;">          -nographic \
+</span><span style="color:#c2d94c;">          -bios </span><span style="font-style:italic;color:#bfbab0;">${</span><span style="font-style:italic;color:#f29718;">pkgsAarch64</span><span style="font-style:italic;color:#f29668;">.</span><span style="font-style:italic;color:#f29718;">OVMF</span><span style="font-style:italic;color:#f29668;">.</span><span style="font-style:italic;color:#f29718;">fd</span><span style="font-style:italic;color:#bfbab0;">}</span><span style="color:#c2d94c;">/FV/QEMU_EFI.fd
+</span><span style="color:#c2d94c;">      &#39;&#39;</span><span style="color:#bfbab0cc;">;
+</span><span>    </span><span style="color:#ff7733;">in
+</span><span>    {
+</span><span>      </span><span style="color:#ffb454;">packages</span><span>.</span><span style="color:#ffb454;">x86_64-linux</span><span>.</span><span style="color:#ffb454;">default </span><span style="color:#f29668;">= </span><span style="color:#f29718;">vmScript</span><span style="color:#bfbab0cc;">;
+</span><span>    }</span><span style="color:#bfbab0cc;">;
+</span><span>}
+</span></code></pre>
+<p>Now that we have a VM running we can connect to it using</p>
+<pre data-lang="sh" style="background-color:#0f1419;color:#bfbab0;" class="language-sh "><code class="language-sh" data-lang="sh"><span style="color:#ffb454;">ssh</span><span style="color:#f29718;"> -p</span><span> 3333 root@localhost </span><span style="color:#bfbab0cc;">\
+</span><span style="color:#f29718;">  -o </span><span style="color:#c2d94c;">&quot;UserKnownHostsFile=/dev/null&quot; </span><span style="color:#bfbab0cc;">\
+</span><span style="color:#f29718;">  -o </span><span style="color:#c2d94c;">&quot;StrictHostKeyChecking=no&quot;
+</span></code></pre>
+<p>Unless specified otherwise, the below commands should be run within this
+session.</p>
+<h2 id="partitioning-the-ssd">Partitioning the SSD</h2>
+<p>I like to partition my drives as follows:</p>
+<ol>
+<li>1MiB for the GPT partition metadata</li>
+<li>1023MiB for the boot partition
+<ul>
+<li>Although we're going to be booting from the EEPROM, I'm still going to
+reserve a boot partition in case the drive needs to be salvaged and booted
+elsewhere. That way it won't be necessary to add a partition later and risk
+destroying the existing data.</li>
+</ul>
+</li>
+<li>32MiB for storing LUKS keys and metadata</li>
+<li>8GiB for (encrypted) swap (same size as the RAM on the device)</li>
+<li>The remainder of the space for the (encrypted) data</li>
+</ol>
+<pre data-lang="sh" style="background-color:#0f1419;color:#bfbab0;" class="language-sh "><code class="language-sh" data-lang="sh"><span style="font-style:italic;color:#5c6773;"># The disk should show up at /dev/vdb on the VM, change this if it doesn&#39;t
+</span><span>VDISK</span><span style="color:#f29668;">=</span><span style="color:#c2d94c;">/dev/vdb
+</span><span>
+</span><span style="font-style:italic;color:#5c6773;"># Confirm this we&#39;ve chosen the right disk
+</span><span style="color:#ffb454;">smartctl</span><span style="color:#f29718;"> -a </span><span>${VDISK}
+</span></code></pre>
+<pre data-lang="sh" style="background-color:#0f1419;color:#bfbab0;" class="language-sh "><code class="language-sh" data-lang="sh"><span style="font-style:italic;color:#5c6773;"># Do the actual partition as described above
+</span><span style="color:#ffb454;">parted</span><span style="color:#f29718;"> --align</span><span> optimal ${VDISK}</span><span style="color:#f29668;"> -- </span><span style="color:#bfbab0cc;">\
+</span><span>    mklabel gpt </span><span style="color:#bfbab0cc;">\
+</span><span>    mkpart primary fat32 1MiB 1024MiB </span><span style="color:#bfbab0cc;">\
+</span><span>    name 1 </span><span style="color:#c2d94c;">&#39;EFI system partition&#39; </span><span style="color:#bfbab0cc;">\
+</span><span>    set 1 esp on </span><span style="color:#bfbab0cc;">\
+</span><span>    mkpart primary 1024MiB 1056MiB </span><span style="color:#bfbab0cc;">\
+</span><span>    name 2 </span><span style="color:#c2d94c;">&#39;luks key&#39; </span><span style="color:#bfbab0cc;">\
+</span><span>    mkpart primary 1056MiB 9248MiB </span><span style="color:#bfbab0cc;">\
+</span><span>    name 3 </span><span style="color:#c2d94c;">&#39;swap&#39; </span><span style="color:#bfbab0cc;">\
+</span><span>    mkpart primary 9248MiB 100% </span><span style="color:#bfbab0cc;">\
+</span><span>    name 4 </span><span style="color:#c2d94c;">&#39;root&#39; </span><span style="color:#bfbab0cc;">\
+</span><span>    print </span><span style="color:#bfbab0cc;">\
+</span><span>    quit
+</span><span>
+</span><span style="font-style:italic;color:#5c6773;"># Lastly, write down the UUIDs for the LUKS, swap, and root partitions
+</span><span style="font-style:italic;color:#5c6773;"># and add them to the NixOS config
+</span><span style="color:#ffb454;">ls</span><span style="color:#f29718;"> -l</span><span> /dev/disk/by-uuid
+</span></code></pre>
+<h2 id="luks-configuration">LUKS Configuration</h2>
+<p>Encrypting the SSD('s non-boot partitions) works just like on any other machine.
+To give a concrete example, we're going to set up things in the following manner:</p>
+<ul>
+<li><code>cryptkey</code> - this is the second partition we created above, and will be
+unlocked with a password we remember. Its contents will be a bunch of random
+data which will be used for unlocking the rest of the encrypted partitions</li>
+<li><code>cryptswap</code> - this is the third partition we created above, and will be
+unlocked using the decrypted <code>cryptkey</code> partition. It will be used for the
+system's swap.</li>
+<li><code>cryptroot</code> - this is the fourth partition we created above, and will be
+unlocked using the decrypted <code>cryptkey</code> partition; it will also have a
+<em>backup</em> password (which we need not remember, but should store a copy in a
+safe place) in case <code>cryptkey</code> is corrupted. It will contain the actual root
+filesystem for the device.</li>
+</ul>
+<blockquote>
+<p>Note: I choose to enable <code>--allow-discards</code> which instructs the mapper to
+propagate trim commands issued by the underlying filesystem, allowing the SSD
+to better perform wear leveling. This option is disabled by default since
+there are some theoretical attack vectors from having it enabled and allowing
+an attacker to physically access the disk (namely leaking which blocks are
+trimmed, an some potential oracle attacks if the attacker can influence what
+data is written to the disk). Consult your threat model if this option is
+appropriate for you.</p>
+</blockquote>
+<pre data-lang="sh" style="background-color:#0f1419;color:#bfbab0;" class="language-sh "><code class="language-sh" data-lang="sh"><span style="font-style:italic;color:#5c6773;"># Note set the password you will use for &quot;day-to-day&quot; unlocking of the system
+</span><span style="font-style:italic;color:#5c6773;"># at boot, and make it a good one!
+</span><span style="color:#ffb454;">cryptsetup</span><span> luksFormat</span><span style="color:#f29718;"> --type</span><span> luks1 </span><span style="color:#c2d94c;">&quot;$</span><span>{VDISK}</span><span style="color:#c2d94c;">2&quot;
+</span><span style="color:#ffb454;">cryptsetup</span><span> open</span><span style="color:#f29718;"> --type</span><span> luks1 </span><span style="color:#c2d94c;">&quot;$</span><span>{VDISK}</span><span style="color:#c2d94c;">2&quot;</span><span> cryptkey
+</span><span style="font-style:italic;color:#5c6773;"># Fill the (decrypted) cryptkey partition full of random data
+</span><span style="font-style:italic;color:#5c6773;"># This invocation will fail with a &quot;device out of space&quot; error which is expected
+</span><span style="color:#ffb454;">dd</span><span> if=/dev/urandom of=/dev/mapper/cryptkey bs=1024 status=progress
+</span><span>
+</span><span style="font-style:italic;color:#5c6773;"># Create and mount the encrypted swap partition
+</span><span style="color:#ffb454;">cryptsetup</span><span> luksFormat </span><span style="color:#bfbab0cc;">\
+</span><span style="color:#f29718;">  --type</span><span> luks1 </span><span style="color:#bfbab0cc;">\
+</span><span style="color:#f29718;">  --keyfile-size</span><span> 8192 </span><span style="color:#bfbab0cc;">\
+</span><span style="color:#f29718;">  --key-file</span><span> /dev/mapper/cryptkey </span><span style="color:#bfbab0cc;">\
+</span><span>  </span><span style="color:#c2d94c;">&quot;$</span><span>{VDISK}</span><span style="color:#c2d94c;">3&quot;
+</span><span style="color:#ffb454;">cryptsetup</span><span> open </span><span style="color:#bfbab0cc;">\
+</span><span style="color:#f29718;">  --type</span><span> luks1 </span><span style="color:#bfbab0cc;">\
+</span><span style="color:#f29718;">  --keyfile-size</span><span> 8192 </span><span style="color:#bfbab0cc;">\
+</span><span style="color:#f29718;">  --key-file</span><span> /dev/mapper/cryptkey </span><span style="color:#bfbab0cc;">\
+</span><span>  </span><span style="color:#c2d94c;">&quot;$</span><span>{VDISK}</span><span style="color:#c2d94c;">3&quot; </span><span style="color:#bfbab0cc;">\
+</span><span>  cryptswap
+</span><span>
+</span><span style="font-style:italic;color:#5c6773;"># Create and mount the data partition.
+</span><span style="font-style:italic;color:#5c6773;"># Use a strong backup unlock phrase (e.g. dice ware) and write this down someplace safe!
+</span><span style="color:#ffb454;">cryptsetup</span><span> luksFormat</span><span style="color:#f29718;"> --type</span><span> luks1 </span><span style="color:#c2d94c;">&quot;$</span><span>{VDISK}</span><span style="color:#c2d94c;">4&quot;
+</span><span style="color:#ffb454;">cryptsetup</span><span> luksAddKey </span><span style="color:#bfbab0cc;">\
+</span><span style="color:#f29718;">  --new-keyfile-size</span><span> 8192 </span><span style="color:#bfbab0cc;">\
+</span><span>  </span><span style="color:#c2d94c;">&quot;$</span><span>{VDISK}</span><span style="color:#c2d94c;">4&quot; </span><span style="color:#bfbab0cc;">\
+</span><span>  /dev/mapper/cryptkey
+</span><span style="color:#ffb454;">cryptsetup</span><span> open </span><span style="color:#bfbab0cc;">\
+</span><span style="color:#f29718;">  --type</span><span> luks1 </span><span style="color:#bfbab0cc;">\
+</span><span style="color:#f29718;">  --keyfile-size</span><span> 8192 </span><span style="color:#bfbab0cc;">\
+</span><span style="color:#f29718;">  --key-file</span><span> /dev/mapper/cryptkey </span><span style="color:#bfbab0cc;">\
+</span><span style="color:#f29718;">  --allow-discards </span><span style="color:#bfbab0cc;">\
+</span><span>  </span><span style="color:#c2d94c;">&quot;$</span><span>{VDISK}</span><span style="color:#c2d94c;">4&quot; </span><span style="color:#bfbab0cc;">\
+</span><span>  cryptroot
+</span></code></pre>
+<p>Finally, we initialize the (unencrypted) boot partition with an empty FAT32
+partition, and initialize and enable the (decrypted) swap partition.</p>
+<pre data-lang="sh" style="background-color:#0f1419;color:#bfbab0;" class="language-sh "><code class="language-sh" data-lang="sh"><span style="color:#ffb454;">mkfs.vfat </span><span style="color:#c2d94c;">&quot;$</span><span>{VDISK}</span><span style="color:#c2d94c;">1&quot;
+</span><span style="color:#ffb454;">mkswap</span><span> /dev/mapper/cryptswap
+</span><span style="color:#ffb454;">swapon</span><span> /dev/mapper/cryptswap
+</span></code></pre>
+<blockquote>
+<p>Remember to update the configuration with a <code>postDeviceCommand</code> to <code>cryptsetup close cryptkey</code> so that the contents of the <code>cryptkey</code> partition don't remain
+accessible after booting!</p>
+</blockquote>
+<h2 id="zfs-configuration">ZFS Configuration</h2>
+<p>There's nothing specific to this setup which dictates how ZFS must be
+configured, but as a complete example I want to describe my approach with the
+following dataset hierarchy:</p>
+<ul>
+<li><code>local</code> - for data which is either ephemeral or does not need to be backed up
+<ul>
+<li><code>root</code> - mounted as the system root, reverted to a blank snapshot on every
+boot so I can <a rel="nofollow noreferrer" href="https://web.archive.org/web/20230216224910/https://grahamc.com/blog/erase-your-darlings">Erase My Darlings</a></li>
+<li><code>nix</code> - mounted as <code>/nix/store</code>, no need to snapshot as it can be trivially
+rebuilt if necessary</li>
+</ul>
+</li>
+<li><code>persist</code> - for all data that should be persisted across reboots, snapshotted
+by default
+<ul>
+<li><code>journal</code> - systemd logs, mounted at <code>/var/log/journal</code></li>
+<li><code>lib</code> - catchall for application state, mounted at <code>/var/lib</code>. Normally I
+like to split out services into their own datasets (for independent
+snapshotting and rollback), though this acts as a good safety to avoid
+forgetting to persist a particular service's state directories and losing them
+on reboot.</li>
+<li><code>system</code> - miscellaneous system-specific files which should be persisted
+across reboots, mounted at <code>/persist</code></li>
+<li><code>user</code> - parent dataset for users' data/home directories</li>
+</ul>
+</li>
+<li><code>reserved</code> - used for over-provisioning the disk (i.e. no data will be written
+here to allow the SSD to move blocks and maintain the health of the
+flash storage)</li>
+</ul>
+<pre data-lang="sh" style="background-color:#0f1419;color:#bfbab0;" class="language-sh "><code class="language-sh" data-lang="sh"><span style="font-style:italic;color:#5c6773;"># Configure the pool and user names we want to use
+</span><span>POOL</span><span style="color:#f29668;">=</span><span style="color:#c2d94c;">phlegethon
+</span><span>MY_USER</span><span style="color:#f29668;">=</span><span style="color:#c2d94c;">ivan
+</span></code></pre>
+<pre data-lang="sh" style="background-color:#0f1419;color:#bfbab0;" class="language-sh "><code class="language-sh" data-lang="sh"><span style="font-style:italic;color:#5c6773;"># Note: when creating the pool, lower case `-o` is used to configure properties at
+</span><span style="font-style:italic;color:#5c6773;"># the _pool_ level, while upper case `-O` is used to configure properties at the
+</span><span style="font-style:italic;color:#5c6773;"># _dataset_ level
+</span><span style="font-style:italic;color:#5c6773;">#
+</span><span style="font-style:italic;color:#5c6773;"># Note: ashift MUST BE SET or there will be horrible horrible write performance
+</span><span style="font-style:italic;color:#5c6773;"># using the default value ZFS selects. If you aren&#39;t sure what to pick and
+</span><span style="font-style:italic;color:#5c6773;"># have a modern drive, just take my word for it and set it to 13.
+</span><span style="color:#ffb454;">zpool</span><span> create </span><span style="color:#bfbab0cc;">\
+</span><span style="color:#f29718;">  -o</span><span> ashift=13 </span><span style="color:#bfbab0cc;">\
+</span><span style="color:#f29718;">  -o</span><span> autotrim=on </span><span style="color:#bfbab0cc;">\
+</span><span style="color:#f29718;">  -O</span><span> acltype=posixacl </span><span style="color:#bfbab0cc;">\
+</span><span style="color:#f29718;">  -O</span><span> atime=off </span><span style="color:#bfbab0cc;">\
+</span><span style="color:#f29718;">  -O</span><span> canmount=off </span><span style="color:#bfbab0cc;">\
+</span><span style="color:#f29718;">  -O</span><span> compression=lz4 </span><span style="color:#bfbab0cc;">\
+</span><span style="color:#f29718;">  -O</span><span> xattr=sa </span><span style="color:#bfbab0cc;">\
+</span><span style="color:#f29718;">  -m</span><span> legacy </span><span style="color:#bfbab0cc;">\
+</span><span>  ${POOL} /dev/mapper/cryptroot
+</span><span>
+</span><span style="font-style:italic;color:#5c6773;"># Reserve (i.e. overprovision) ~10% of the disk (assuming 1TB disk)
+</span><span style="color:#ffb454;">zfs</span><span> create </span><span style="color:#bfbab0cc;">\
+</span><span style="color:#f29718;">    -o</span><span> reservation=200G </span><span style="color:#bfbab0cc;">\
+</span><span style="color:#f29718;">    -o</span><span> quota=200G </span><span style="color:#bfbab0cc;">\
+</span><span style="color:#f29718;">    -o</span><span> canmount=off </span><span style="color:#bfbab0cc;">\
+</span><span>    ${POOL}/reserved
+</span><span>
+</span><span style="font-style:italic;color:#5c6773;"># systemd-remount-fs.service complains if mountpoint not set
+</span><span style="color:#ffb454;">zfs</span><span> create</span><span style="color:#f29718;"> -o</span><span> canmount=off</span><span style="color:#f29718;"> -o</span><span> mountpoint=/ ${POOL}/local
+</span><span style="color:#ffb454;">zfs</span><span> create ${POOL}/local/nix
+</span><span style="color:#ffb454;">zfs</span><span> create ${POOL}/local/root
+</span><span>
+</span><span style="font-style:italic;color:#5c6773;"># Snapshot the root while still empty so we can easily revert it back
+</span><span style="color:#ffb454;">zfs</span><span> snapshot ${POOL}/local/root@blank
+</span><span>
+</span><span style="color:#ffb454;">zfs</span><span> create</span><span style="color:#f29718;"> -o</span><span> com.sun:auto-snapshot=true</span><span style="color:#f29718;"> -o</span><span> canmount=off ${POOL}/persist
+</span><span style="color:#ffb454;">zfs</span><span> create ${POOL}/persist/system
+</span><span style="color:#ffb454;">zfs</span><span> create ${POOL}/persist/lib
+</span><span style="color:#ffb454;">zfs</span><span> create ${POOL}/persist/journal
+</span><span style="color:#ffb454;">zfs</span><span> create</span><span style="color:#f29718;"> -o</span><span> canmount=off ${POOL}/persist/user
+</span><span style="color:#ffb454;">zfs</span><span> create ${POOL}/persist/user/${MY_USER}
+</span></code></pre>
+<p>Finally, mount all datasets at their appropriate paths <em>before</em> doing the
+installation (lest the data be written in the wrong spot and missing during
+boot):</p>
+<pre data-lang="sh" style="background-color:#0f1419;color:#bfbab0;" class="language-sh "><code class="language-sh" data-lang="sh"><span style="color:#ffb454;">mkdir</span><span> /mnt
+</span><span style="color:#ffb454;">mount</span><span style="color:#f29718;"> -t</span><span> zfs </span><span style="color:#c2d94c;">&quot;$</span><span>{POOL}</span><span style="color:#c2d94c;">/local/root&quot;</span><span> /mnt
+</span><span>
+</span><span style="color:#ffb454;">mkdir</span><span style="color:#f29718;"> -p</span><span> /mnt/{boot</span><span style="color:#bfbab0cc;">,</span><span>home/${MY_USER}</span><span style="color:#bfbab0cc;">,</span><span>nix</span><span style="color:#bfbab0cc;">,</span><span>persist</span><span style="color:#bfbab0cc;">,</span><span>var/{lib</span><span style="color:#bfbab0cc;">,</span><span>log/journal}}
+</span><span>
+</span><span style="color:#ffb454;">mount </span><span style="color:#c2d94c;">&quot;$</span><span>{VDISK}</span><span style="color:#c2d94c;">1&quot;</span><span> /mnt/boot
+</span><span style="color:#ffb454;">mount</span><span style="color:#f29718;"> -t</span><span> zfs </span><span style="color:#c2d94c;">&quot;$</span><span>{POOL}</span><span style="color:#c2d94c;">/local/nix&quot;</span><span> /mnt/nix
+</span><span style="color:#ffb454;">mount</span><span style="color:#f29718;"> -t</span><span> zfs </span><span style="color:#c2d94c;">&quot;$</span><span>{POOL}</span><span style="color:#c2d94c;">/persist/user/$</span><span>{MY_USER}</span><span style="color:#c2d94c;">&quot;</span><span> /mnt/home/${MY_USER}
+</span><span style="color:#ffb454;">mount</span><span style="color:#f29718;"> -t</span><span> zfs </span><span style="color:#c2d94c;">&quot;$</span><span>{POOL}</span><span style="color:#c2d94c;">/persist/system&quot;</span><span> /mnt/persist
+</span><span style="color:#ffb454;">mount</span><span style="color:#f29718;"> -t</span><span> zfs </span><span style="color:#c2d94c;">&quot;$</span><span>{POOL}</span><span style="color:#c2d94c;">/persist/lib&quot;</span><span> /mnt/var/lib
+</span><span style="color:#ffb454;">mount</span><span style="color:#f29718;"> -t</span><span> zfs </span><span style="color:#c2d94c;">&quot;$</span><span>{POOL}</span><span style="color:#c2d94c;">/persist/journal&quot;</span><span> /mnt/var/log/journal
+</span></code></pre>
+<h2 id="optional-remote-luks-unlock">(Optional) Remote LUKS Unlock</h2>
+<p>Having to plug in a keyboard and monitor to the PiBox to unlock after a restart
+can be a chore, so being able to unlock the drive remotely via SSH can be much
+more convenient. First we need to generate a unique host key for the <em>boot</em>
+stage.</p>
+<blockquote>
+<p>Note that although the key itself will be stored on the encrypted partition,
+it will be copied to the initrd stored on the <em>unecrypted</em> boot partition
+since the CM4 has no TPM that can be used to further encrypt secrets.
+Therefore, this needs to be a unique host key that is <em>only</em> used for remote
+unlocking and not shared with other hosts. Once the root drive is unlocked,
+the machine will use another host key which is protected by the disk
+encryption.</p>
+</blockquote>
+<pre data-lang="sh" style="background-color:#0f1419;color:#bfbab0;" class="language-sh "><code class="language-sh" data-lang="sh"><span style="font-style:italic;color:#5c6773;"># This can be stored anywhere on the host, so long as the path is accessible
+</span><span style="font-style:italic;color:#5c6773;"># when the system activation script is run. When doing remote deployments it
+</span><span style="font-style:italic;color:#5c6773;"># _need not_ be accessible by the deploying host
+</span><span style="color:#ffb454;">mkdir</span><span style="color:#f29718;"> -p</span><span> /mnt/persist/etc/ssh
+</span><span style="color:#ffb454;">ssh-keygen</span><span style="color:#f29718;"> -t</span><span> ed25519</span><span style="color:#f29718;"> -N </span><span style="color:#c2d94c;">&quot;&quot;</span><span style="color:#f29718;"> -f</span><span> /mnt/persist/etc/ssh/initrd_ssh_host_ed25519_key
+</span></code></pre>
+<blockquote>
+<p>Note the generated fingerprint here and add it to <code>~/.ssh/known_hosts</code> (for the
+correct address and port) so you can be (more) sure you are connecting to the
+correct host before entering the unlock password.</p>
+</blockquote>
+<p>Next, pick a port and update the NixOS configuration with the following:</p>
+<pre data-lang="nix" style="background-color:#0f1419;color:#bfbab0;" class="language-nix "><code class="language-nix" data-lang="nix"><span style="color:#f29718;">boot</span><span style="color:#f29668;">.</span><span style="color:#f29718;">network </span><span style="color:#ff3333;">= </span><span>{
+</span><span>  </span><span style="color:#ffb454;">enable </span><span style="color:#f29668;">= </span><span style="color:#f29718;">true</span><span style="color:#bfbab0cc;">;
+</span><span>  </span><span style="color:#ffb454;">ssh </span><span style="color:#f29668;">= </span><span>{
+</span><span>    </span><span style="color:#ffb454;">enable </span><span style="color:#f29668;">= </span><span style="color:#f29718;">true</span><span style="color:#bfbab0cc;">;
+</span><span>    </span><span style="color:#ffb454;">port </span><span style="color:#f29668;">= </span><span style="color:#f29718;">9999</span><span style="color:#bfbab0cc;">;
+</span><span>    </span><span style="color:#ffb454;">authorizedKeys </span><span style="color:#f29668;">= </span><span>[ (</span><span style="color:#f07178;">throw </span><span style="color:#c2d94c;">&quot;add an authorized key here&quot;</span><span>) ]</span><span style="color:#bfbab0cc;">;
+</span><span>    </span><span style="color:#ffb454;">hostKeys </span><span style="color:#f29668;">= </span><span>[
+</span><span>      </span><span style="font-style:italic;color:#5c6773;"># Note this file lives on the host itself,
+</span><span>      </span><span style="font-style:italic;color:#5c6773;"># and isn&#39;t passed in by the deployer
+</span><span>      </span><span style="color:#c2d94c;">&quot;/persist/etc/ssh/initrd_ssh_host_ed25519_key&quot;
+</span><span>    ]</span><span style="color:#bfbab0cc;">;
+</span><span>  }</span><span style="color:#bfbab0cc;">;
+</span><span>}</span><span style="color:#ff3333;">;
+</span></code></pre>
+<p>Also note that when connecting over SSH during boot you'll need to use the port
+defined above (to avoid ambiguity with connecting to the default port (22) after
+unlocking) and you will need to set the user as <code>root</code>. These can be configured
+with a host alias in <code>~/.ssh/config</code>:</p>
+<pre style="background-color:#0f1419;color:#bfbab0;"><code><span>Host boot-unlock
+</span><span>  Hostname = REPLACE_WITH_IP_FOR_THE_HOST
+</span><span>  User root
+</span><span>  Port 9999
+</span></code></pre>
+<p>Then, to unlock the host, simply run <code>ssh boot-unlock</code> and execute
+<code>cryptsetup-askpass</code> to enter the password. You might get a warning about
+&quot;Passphrase is not requested now&quot; after 10 seconds, but this is completely
+normal. I've noticed that it takes about 15 seconds before the disk and CPU LEDs
+start blinking, and about 45 more seconds until the actual boot sequence starts.</p>
+<blockquote>
+<p>Also note that it is probably worth making sure the PiBox has an ethernet
+cable plugged in, as it will not be able to connect to WiFi during boot,
+unless the SSID password is also stored (unprotected) on the initrd</p>
+</blockquote>
+<h2 id="nixos-installation">NixOS Installation</h2>
+<p>To set a password for the root user which persists across unlocks we'll need to
+use a password file:</p>
+<pre data-lang="sh" style="background-color:#0f1419;color:#bfbab0;" class="language-sh "><code class="language-sh" data-lang="sh"><span style="color:#ffb454;">sudo</span><span> mkpasswd</span><span style="color:#f29718;"> -m</span><span> sha-512 </span><span style="color:#f29668;">&gt;</span><span> /persist/root/passwordfile
+</span></code></pre>
+<p>And update the configuration with:</p>
+<pre data-lang="nix" style="background-color:#0f1419;color:#bfbab0;" class="language-nix "><code class="language-nix" data-lang="nix"><span style="color:#f29718;">users</span><span style="color:#f29668;">.</span><span style="color:#f29718;">users</span><span style="color:#f29668;">.</span><span style="color:#f29718;">root</span><span style="color:#f29668;">.</span><span style="color:#f29718;">passwordFile </span><span style="color:#ff3333;">= </span><span style="color:#c2d94c;">&quot;/persist/root/passwordfile&quot;</span><span style="color:#ff3333;">;
+</span><span style="color:#f29718;">fileSystems</span><span style="color:#f29668;">.</span><span style="color:#c2d94c;">&quot;/persist&quot;</span><span style="color:#f29668;">.</span><span style="color:#f29718;">neededForBoot </span><span style="color:#ff3333;">= </span><span style="color:#f29718;">true</span><span style="color:#ff3333;">;
+</span></code></pre>
+<p>Next we need to get the configuration on to the VM. A quick and dirty solution
+is to <code>scp</code> it over:</p>
+<pre data-lang="sh" style="background-color:#0f1419;color:#bfbab0;" class="language-sh "><code class="language-sh" data-lang="sh"><span style="font-style:italic;color:#5c6773;"># In a fresh terminal
+</span><span style="color:#ffb454;">scp</span><span style="color:#f29718;"> -P</span><span> 3333</span><span style="color:#f29718;"> -r </span><span style="font-style:italic;color:#39bae6;">~</span><span>/dotfiles root@localhost:/root </span><span style="color:#bfbab0cc;">\
+</span><span style="color:#f29718;">  -o </span><span style="color:#c2d94c;">&quot;UserKnownHostsFile=/dev/null&quot; </span><span style="color:#bfbab0cc;">\
+</span><span style="color:#f29718;">  -o </span><span style="color:#c2d94c;">&quot;StrictHostKeyChecking=no&quot;
+</span></code></pre>
+<p>Then, back in the VM session we can finally install NixOS on the SSD</p>
+<pre data-lang="sh" style="background-color:#0f1419;color:#bfbab0;" class="language-sh "><code class="language-sh" data-lang="sh"><span>HOST</span><span style="color:#f29668;">=</span><span style="color:#c2d94c;">asphodel
+</span></code></pre>
+<pre data-lang="sh" style="background-color:#0f1419;color:#bfbab0;" class="language-sh "><code class="language-sh" data-lang="sh"><span style="color:#f07178;">cd </span><span style="font-style:italic;color:#39bae6;">~</span><span>/dotfiles
+</span><span style="color:#ffb454;">nixos-install</span><span style="color:#f29718;"> --root</span><span> /mnt</span><span style="color:#f29718;"> --flake</span><span> .#${HOST}</span><span style="color:#f29718;"> --no-channel-copy
+</span><span>
+</span><span style="font-style:italic;color:#5c6773;"># Gracefully detach the disks and exit
+</span><span style="color:#ffb454;">umount</span><span> /mnt/boot
+</span><span style="color:#ffb454;">zpool</span><span> export </span><span style="color:#c2d94c;">&quot;$</span><span>{POOL}</span><span style="color:#c2d94c;">&quot;
+</span><span style="color:#ffb454;">halt
+</span><span style="font-style:italic;color:#5c6773;"># Afterwards, hit &quot;Ctrl-a&quot;, then &quot;x&quot; on the QEMU window to terminate the image
+</span></code></pre>
+<h1 id="firmware-and-bootloader-installation">Firmware and Bootloader Installation</h1>
+<p>The last few things we need to do are installing the firmware needed to boot the
+CM4 (as well as inform the kernel about the fan and LCD peripherals) and the
+EFI/bootloader files generated by the NixOS installation.</p>
+<p>I've already done the hard part of writing a flake which can prepare the
+firmware, as well as enable the fan and display services bundled with the
+PiBox OS so checkout <a rel="nofollow noreferrer" href="https://github.com/ipetkov/nixos-pibox">the repo</a> for more info!</p>
+<blockquote>
+<p>2023-06-04: Hello from the future! If you are updating from 22.11 to 23.05
+you may need to build and copy the firmware before updating (but take a backup
+of your existing <code>/boot</code> directory first)! There was a kernel update (from
+5.15 to 6.1) between the two releases and the device tree definitions need to
+be updated or the new kernel may not recognize the fan and display hardware!</p>
+</blockquote>
+<pre data-lang="sh" style="background-color:#0f1419;color:#bfbab0;" class="language-sh "><code class="language-sh" data-lang="sh"><span style="font-style:italic;color:#5c6773;"># Build and prepare the raspberrypi firmware and apply the device tree
+</span><span style="font-style:italic;color:#5c6773;"># overrides to make the PWM fan and LCD discoverable by the kernel.
+</span><span style="font-style:italic;color:#5c6773;"># Results will be found in `./result`
+</span><span style="color:#ffb454;">nix</span><span> build github:ipetkov/nixos-pibox#packages.aarch64-linux.firmware</span><span style="color:#f29718;"> -L
+</span><span>
+</span><span style="font-style:italic;color:#5c6773;"># Prepare mount paths for the disks
+</span><span style="color:#ffb454;">sudo</span><span> mkdir</span><span style="color:#f29718;"> -p</span><span> /mnt /mnt_ssd
+</span><span>
+</span><span style="font-style:italic;color:#5c6773;"># Reconnect the CM4 as a mass storage device
+</span><span style="color:#ffb454;">nix</span><span> shell nixpkgs#rpiboot</span><span style="color:#f29718;"> --command</span><span> sudo rpiboot</span><span style="color:#f29718;"> -d </span><span style="font-style:italic;color:#39bae6;">~</span><span>/usbboot/mass-storage-gadget
+</span></code></pre>
+<p>Double check the disks paths here again:</p>
+<pre data-lang="sh" style="background-color:#0f1419;color:#bfbab0;" class="language-sh "><code class="language-sh" data-lang="sh"><span>DISK</span><span style="color:#f29668;">=</span><span style="color:#c2d94c;">&quot;/dev/disk/by-id/ata-...&quot;
+</span><span>SD_DISK</span><span style="color:#f29668;">=</span><span style="color:#c2d94c;">&quot;/dev/sd...&quot;
+</span></code></pre>
+<pre data-lang="sh" style="background-color:#0f1419;color:#bfbab0;" class="language-sh "><code class="language-sh" data-lang="sh"><span style="font-style:italic;color:#5c6773;"># Mount the &quot;boot&quot; partition of the SSD
+</span><span style="color:#ffb454;">sudo</span><span> mount </span><span style="color:#c2d94c;">&quot;$</span><span>{DISK}</span><span style="color:#c2d94c;">-part1&quot;</span><span> /mnt_ssd
+</span><span style="font-style:italic;color:#5c6773;"># Mount the CM4&#39;s EEPROM
+</span><span style="color:#ffb454;">sudo</span><span> mount </span><span style="color:#c2d94c;">&quot;$</span><span>{SD_DISK}</span><span style="color:#c2d94c;">1&quot;</span><span> /mnt
+</span><span>
+</span><span style="font-style:italic;color:#5c6773;"># Copy the firmware and EFI/bootloader
+</span><span style="color:#ffb454;">sudo</span><span> cp</span><span style="color:#f29718;"> -r</span><span> ./result/</span><span style="color:#f29668;">*</span><span> /mnt_ssd/</span><span style="color:#f29668;">*</span><span> /mnt
+</span><span>
+</span><span style="font-style:italic;color:#5c6773;"># Cleanup
+</span><span style="color:#ffb454;">sudo</span><span> umount /mnt
+</span><span style="color:#ffb454;">sudo</span><span> umount /mnt_ssd
+</span><span style="color:#ffb454;">sudo</span><span> rmdir /mnt /mnt_ssd
+</span></code></pre>
+<p>Et voilà, the installation is complete! Flip the &quot;boot mode&quot; switch back to
+<code>normal</code>, put the SSD in, and reassemble the PiBox case. If all else has gone
+well you should be able to power on, unlock the disk, and boot and into NixOS.</p>
+<p>Happy hacking!</p>
+<blockquote>
+<p>A quick aside on installing the firmware directly instead of using something
+like the <code>boot.loader.raspberryPi</code> NixOS module: the <a rel="nofollow noreferrer" href="https://web.archive.org/web/20230219015849/https://discourse.nixos.org/t/planning-for-a-better-nixos-on-arm/15346">plans for NixOS on ARM</a>
+highlight that this module largely exists for legacy reasons and should not be
+used going forward. Even though the raspberrypi was designed to have this
+firmware written to its boot partition, it's more akin to the BIOS of a PC
+motherboard: it's not something NixOS should be attempting to manage as
+without it the hardware can't even <em>boot</em>, so getting something wrong means we
+can't even use a &quot;previous generation&quot;. Hence these files should be installed
+once and not touched further (unless you have a backup ready and are willing
+to physically restore the files if something goes wrong).</p>
+</blockquote>
+<h1 id="appendix">Appendix</h1>
+<h2 id="references">References</h2>
+<ul>
+<li><a rel="nofollow noreferrer" href="https://github.com/ipetkov/nixos-pibox">https://github.com/ipetkov/nixos-pibox</a></li>
+<li><a rel="nofollow noreferrer" href="https://github.com/kubesail/pibox-os/tree/main/lcd-display">https://github.com/kubesail/pibox-os/tree/main/lcd-display</a></li>
+<li><a rel="nofollow noreferrer" href="https://github.com/raspberrypi/usbboot">https://github.com/raspberrypi/usbboot</a></li>
+<li><a rel="nofollow noreferrer" href="https://web.archive.org/web/20230219015339/https://carjorvaz.com/posts/nixos-on-raspberry-pi-4-with-uefi-and-zfs">https://carjorvaz.com/posts/nixos-on-raspberry-pi-4-with-uefi-and-zfs</a></li>
+<li><a rel="nofollow noreferrer" href="https://web.archive.org/web/20230219015443/https://mth.st/blog/nixos-initrd-ssh">https://mth.st/blog/nixos-initrd-ssh</a></li>
+<li><a rel="nofollow noreferrer" href="https://web.archive.org/web/20230219015738/https://mgdm.net/weblog/nixos-on-raspberry-pi-4">https://mgdm.net/weblog/nixos-on-raspberry-pi-4</a></li>
+<li><a rel="nofollow noreferrer" href="https://web.archive.org/web/20230219015836/https://www.jeffgeerling.com/blog/2022/how-update-raspberry-pi-compute-module-4-bootloader-eeprom">https://www.jeffgeerling.com/blog/2022/how-update-raspberry-pi-compute-module-4-bootloader-eeprom</a></li>
+<li><a rel="nofollow noreferrer" href="https://web.archive.org/web/20230219015849/https://discourse.nixos.org/t/planning-for-a-better-nixos-on-arm/15346">https://discourse.nixos.org/t/planning-for-a-better-nixos-on-arm/15346</a></li>
+<li><a rel="nofollow noreferrer" href="https://web.archive.org/web/20230216224910/https://grahamc.com/blog/erase-your-darlings">https://grahamc.com/blog/erase-your-darlings</a></li>
+<li><a rel="nofollow noreferrer" href="https://web.archive.org/web/20230219020744/https://jrs-s.net/2018/08/17/zfs-tuning-cheat-sheet">https://jrs-s.net/2018/08/17/zfs-tuning-cheat-sheet</a></li>
+<li><a rel="nofollow noreferrer" href="https://web.archive.org/web/20230219020754/https://docs.kubesail.com/guides/pibox/os">https://docs.kubesail.com/guides/pibox/os</a></li>
+</ul>
+<h2 id="sample-configuration">Sample Configuration</h2>
+<p>Here's a sample NixOS configuration to get you started with everything we've set
+up above. This also includes the systemd services required for controlling the
+PWM fan and LCD on the PiBox!</p>
+<pre data-lang="nix" style="background-color:#0f1419;color:#bfbab0;" class="language-nix "><code class="language-nix" data-lang="nix"><span>{
+</span><span>  </span><span style="color:#ffb454;">inputs </span><span style="color:#f29668;">= </span><span>{
+</span><span>    </span><span style="color:#ffb454;">nixpkgs</span><span>.</span><span style="color:#ffb454;">url </span><span style="color:#f29668;">= </span><span style="color:#c2d94c;">&quot;nixpkgs/nixos-unstable&quot;</span><span style="color:#bfbab0cc;">;
+</span><span>    </span><span style="color:#ffb454;">nixos-hardware</span><span>.</span><span style="color:#ffb454;">url </span><span style="color:#f29668;">= </span><span style="color:#c2d94c;">&quot;github:NixOS/nixos-hardware&quot;</span><span style="color:#bfbab0cc;">;
+</span><span>    </span><span style="color:#ffb454;">nixos-pibox </span><span style="color:#f29668;">= </span><span>{
+</span><span>      </span><span style="color:#ffb454;">url </span><span style="color:#f29668;">= </span><span style="color:#c2d94c;">&quot;github:ipetkov/nixos-pibox&quot;</span><span style="color:#bfbab0cc;">;
+</span><span>      </span><span style="color:#ffb454;">inputs</span><span>.</span><span style="color:#ffb454;">nixpkgs</span><span>.</span><span style="color:#ffb454;">follows </span><span style="color:#f29668;">= </span><span style="color:#c2d94c;">&quot;nixpkgs&quot;</span><span style="color:#bfbab0cc;">;
+</span><span>    }</span><span style="color:#bfbab0cc;">;
+</span><span>  }</span><span style="color:#bfbab0cc;">;
+</span><span>
+</span><span>  </span><span style="color:#ffb454;">outputs </span><span style="color:#f29668;">= </span><span style="color:#f29718;">inputs</span><span>@{ </span><span style="color:#f29718;">self</span><span style="color:#f29668;">, </span><span style="color:#f29718;">nixpkgs</span><span style="color:#f29668;">, ... </span><span>}:
+</span><span>    </span><span style="color:#ff7733;">let
+</span><span>      </span><span style="font-style:italic;color:#5c6773;"># Replace all these placeholders with your actual values!
+</span><span>      </span><span style="color:#ffb454;">deviceBoot </span><span style="color:#f29668;">= </span><span style="color:#f07178;">throw </span><span style="color:#c2d94c;">&quot;REPLACE ME: /dev/disk/by-uuid/...&quot;</span><span style="color:#bfbab0cc;">;
+</span><span>      </span><span style="color:#ffb454;">deviceCryptKey </span><span style="color:#f29668;">= </span><span style="color:#f07178;">throw </span><span style="color:#c2d94c;">&quot;REPLACE ME: /dev/disk/by-uuid/...&quot;</span><span style="color:#bfbab0cc;">;
+</span><span>      </span><span style="color:#ffb454;">deviceCryptRoot </span><span style="color:#f29668;">= </span><span style="color:#f07178;">throw </span><span style="color:#c2d94c;">&quot;REPLACE ME: /dev/disk/by-uuid/...&quot;</span><span style="color:#bfbab0cc;">;
+</span><span>      </span><span style="color:#ffb454;">deviceCryptSwap </span><span style="color:#f29668;">= </span><span style="color:#f07178;">throw </span><span style="color:#c2d94c;">&quot;REPLACE ME: /dev/disk/by-uuid/...&quot;</span><span style="color:#bfbab0cc;">;
+</span><span>      </span><span style="color:#ffb454;">hostId </span><span style="color:#f29668;">= </span><span style="color:#f07178;">throw </span><span style="color:#c2d94c;">&quot;REPLACE ME: deadbeef&quot;</span><span style="color:#bfbab0cc;">;
+</span><span>      </span><span style="color:#ffb454;">hostName </span><span style="color:#f29668;">= </span><span style="color:#f07178;">throw </span><span style="color:#c2d94c;">&quot;REPLACE ME&quot;</span><span style="color:#bfbab0cc;">;
+</span><span>      </span><span style="color:#ffb454;">userSshKey </span><span style="color:#f29668;">= </span><span style="color:#f07178;">throw </span><span style="color:#c2d94c;">&quot;REPLACE ME: ssh-ed25519 ...&quot;</span><span style="color:#bfbab0cc;">;
+</span><span>      </span><span style="color:#ffb454;">user </span><span style="color:#f29668;">= </span><span style="color:#f07178;">throw </span><span style="color:#c2d94c;">&quot;REPLACE ME&quot;</span><span style="color:#bfbab0cc;">;
+</span><span>      </span><span style="color:#ffb454;">zpool </span><span style="color:#f29668;">= </span><span style="color:#f07178;">throw </span><span style="color:#c2d94c;">&quot;REPLACE ME&quot;</span><span style="color:#bfbab0cc;">;
+</span><span>    </span><span style="color:#ff7733;">in
+</span><span>    {
+</span><span>      </span><span style="color:#ffb454;">nixosConfigurations</span><span>.</span><span style="font-style:italic;color:#bfbab0;">${</span><span style="font-style:italic;color:#f29718;">hostName</span><span style="font-style:italic;color:#bfbab0;">} </span><span style="color:#f29668;">= </span><span style="color:#f29718;">nixpkgs</span><span style="color:#f29668;">.</span><span style="color:#f29718;">lib</span><span style="color:#f29668;">.</span><span style="color:#f29718;">nixosSystem </span><span>{
+</span><span>        </span><span style="color:#ffb454;">modules </span><span style="color:#f29668;">= </span><span>[
+</span><span>          ({ </span><span style="color:#f29718;">config</span><span style="color:#f29668;">, </span><span style="color:#f29718;">lib</span><span style="color:#f29668;">, </span><span style="color:#f29718;">pkgs</span><span style="color:#f29668;">, ... </span><span>}: {
+</span><span>            </span><span style="color:#ffb454;">imports </span><span style="color:#f29668;">= </span><span>[
+</span><span>              </span><span style="color:#f29718;">inputs</span><span style="color:#f29668;">.</span><span style="color:#f29718;">nixos-hardware</span><span style="color:#f29668;">.</span><span style="color:#f29718;">nixosModules</span><span style="color:#f29668;">.</span><span style="color:#f29718;">raspberry-pi-4
+</span><span>              </span><span style="color:#f29718;">inputs</span><span style="color:#f29668;">.</span><span style="color:#f29718;">nixos-pibox</span><span style="color:#f29668;">.</span><span style="color:#f29718;">nixosModules</span><span style="color:#f29668;">.</span><span style="color:#f29718;">default
+</span><span>            ]</span><span style="color:#bfbab0cc;">;
+</span><span>
+</span><span>            </span><span style="color:#ffb454;">nixpkgs</span><span>.</span><span style="color:#ffb454;">overlays </span><span style="color:#f29668;">= </span><span>[
+</span><span>              </span><span style="color:#f29718;">inputs</span><span style="color:#f29668;">.</span><span style="color:#f29718;">nixos-pibox</span><span style="color:#f29668;">.</span><span style="color:#f29718;">overlays</span><span style="color:#f29668;">.</span><span style="color:#f29718;">default
+</span><span>            ]</span><span style="color:#bfbab0cc;">;
+</span><span>
+</span><span>            </span><span style="color:#ffb454;">boot </span><span style="color:#f29668;">= </span><span>{
+</span><span>              </span><span style="color:#ffb454;">extraModulePackages </span><span style="color:#f29668;">= </span><span>[ ]</span><span style="color:#bfbab0cc;">;
+</span><span>
+</span><span>              </span><span style="font-style:italic;color:#5c6773;"># </span><span style="font-weight:bold;color:#f07178;">!!!</span><span style="font-style:italic;color:#5c6773;"> cryptkey must be done first, and the list seems to be
+</span><span>              </span><span style="font-style:italic;color:#5c6773;"># alphabetically sorted, so take care that cryptroot / cryptswap,
+</span><span>              </span><span style="font-style:italic;color:#5c6773;"># whatever you name them, come after cryptkey.
+</span><span>              </span><span style="color:#ffb454;">initrd </span><span style="color:#f29668;">= </span><span>{
+</span><span>                </span><span style="color:#ffb454;">luks</span><span>.</span><span style="color:#ffb454;">devices </span><span style="color:#f29668;">= </span><span>{
+</span><span>                  </span><span style="color:#ffb454;">cryptkey </span><span style="color:#f29668;">= </span><span>{
+</span><span>                    </span><span style="color:#ffb454;">device </span><span style="color:#f29668;">= </span><span style="color:#f29718;">deviceCryptKey</span><span style="color:#bfbab0cc;">;
+</span><span>                  }</span><span style="color:#bfbab0cc;">;
+</span><span>
+</span><span>                  </span><span style="color:#ffb454;">cryptroot </span><span style="color:#f29668;">= </span><span>{
+</span><span>                    </span><span style="color:#ffb454;">allowDiscards </span><span style="color:#f29668;">= </span><span style="color:#f29718;">true</span><span style="color:#bfbab0cc;">;
+</span><span>                    </span><span style="color:#ffb454;">device </span><span style="color:#f29668;">= </span><span style="color:#f29718;">deviceCryptRoot</span><span style="color:#bfbab0cc;">;
+</span><span>                    </span><span style="color:#ffb454;">keyFile </span><span style="color:#f29668;">= </span><span style="color:#c2d94c;">&quot;/dev/mapper/cryptkey&quot;</span><span style="color:#bfbab0cc;">;
+</span><span>                    </span><span style="color:#ffb454;">keyFileSize </span><span style="color:#f29668;">= </span><span style="color:#f29718;">8192</span><span style="color:#bfbab0cc;">;
+</span><span>                  }</span><span style="color:#bfbab0cc;">;
+</span><span>
+</span><span>                  </span><span style="color:#ffb454;">cryptswap </span><span style="color:#f29668;">= </span><span>{
+</span><span>                    </span><span style="color:#ffb454;">allowDiscards </span><span style="color:#f29668;">= </span><span style="color:#f29718;">true</span><span style="color:#bfbab0cc;">;
+</span><span>                    </span><span style="color:#ffb454;">device </span><span style="color:#f29668;">= </span><span style="color:#f29718;">deviceCryptSwap</span><span style="color:#bfbab0cc;">;
+</span><span>                    </span><span style="color:#ffb454;">keyFile </span><span style="color:#f29668;">= </span><span style="color:#c2d94c;">&quot;/dev/mapper/cryptkey&quot;</span><span style="color:#bfbab0cc;">;
+</span><span>                    </span><span style="color:#ffb454;">keyFileSize </span><span style="color:#f29668;">= </span><span style="color:#f29718;">8192</span><span style="color:#bfbab0cc;">;
+</span><span>                  }</span><span style="color:#bfbab0cc;">;
+</span><span>                }</span><span style="color:#bfbab0cc;">;
+</span><span>
+</span><span>                </span><span style="color:#ffb454;">postDeviceCommands </span><span style="color:#f29668;">= </span><span style="color:#f29718;">lib</span><span style="color:#f29668;">.</span><span style="color:#f29718;">mkAfter </span><span style="color:#c2d94c;">&#39;&#39;
+</span><span style="color:#c2d94c;">                  cryptsetup close cryptkey
+</span><span style="color:#c2d94c;">                  zfs rollback -r </span><span style="font-style:italic;color:#bfbab0;">${</span><span style="font-style:italic;color:#f29718;">zpool</span><span style="font-style:italic;color:#bfbab0;">}</span><span style="color:#c2d94c;">/local/root@blank &amp;&amp; echo blanked out root
+</span><span style="color:#c2d94c;">                &#39;&#39;</span><span style="color:#bfbab0cc;">;
+</span><span>
+</span><span>                </span><span style="font-style:italic;color:#5c6773;"># Support remote unlock. Run `cryptsetup-askpass` to unlock
+</span><span>                </span><span style="color:#ffb454;">network </span><span style="color:#f29668;">= </span><span>{
+</span><span>                  </span><span style="color:#ffb454;">enable </span><span style="color:#f29668;">= </span><span style="color:#f29718;">true</span><span style="color:#bfbab0cc;">;
+</span><span>                  </span><span style="color:#ffb454;">ssh </span><span style="color:#f29668;">= </span><span>{
+</span><span>                    </span><span style="color:#ffb454;">enable </span><span style="color:#f29668;">= </span><span style="color:#f29718;">true</span><span style="color:#bfbab0cc;">;
+</span><span>                    </span><span style="color:#ffb454;">authorizedKeys </span><span style="color:#f29668;">= </span><span style="color:#f29718;">config</span><span style="color:#f29668;">.</span><span style="color:#f29718;">users</span><span style="color:#f29668;">.</span><span style="color:#f29718;">users</span><span style="color:#f29668;">.</span><span style="font-style:italic;color:#bfbab0;">${</span><span style="font-style:italic;color:#f29718;">user</span><span style="font-style:italic;color:#bfbab0;">}</span><span style="color:#f29668;">.</span><span style="color:#f29718;">openssh</span><span style="color:#f29668;">.</span><span style="color:#f29718;">authorizedKeys</span><span style="color:#f29668;">.</span><span style="color:#f29718;">keys</span><span style="color:#bfbab0cc;">;
+</span><span>                    </span><span style="color:#ffb454;">port </span><span style="color:#f29668;">= </span><span style="color:#f29718;">9999</span><span style="color:#bfbab0cc;">;
+</span><span>                    </span><span style="color:#ffb454;">hostKeys </span><span style="color:#f29668;">= </span><span>[
+</span><span>                      </span><span style="font-style:italic;color:#5c6773;"># Note this file lives on the host itself, and isn&#39;t passed in by the deployer
+</span><span>                      </span><span style="color:#c2d94c;">&quot;/persist/etc/ssh/initrd_ssh_host_ed25519_key&quot;
+</span><span>                    ]</span><span style="color:#bfbab0cc;">;
+</span><span>                  }</span><span style="color:#bfbab0cc;">;
+</span><span>                }</span><span style="color:#bfbab0cc;">;
+</span><span>              }</span><span style="color:#bfbab0cc;">;
+</span><span>
+</span><span>              </span><span style="color:#ffb454;">loader </span><span style="color:#f29668;">= </span><span>{
+</span><span>                </span><span style="color:#ffb454;">efi</span><span>.</span><span style="color:#ffb454;">canTouchEfiVariables </span><span style="color:#f29668;">= </span><span style="color:#f29718;">true</span><span style="color:#bfbab0cc;">;
+</span><span>                </span><span style="color:#ffb454;">generic-extlinux-compatible</span><span>.</span><span style="color:#ffb454;">enable </span><span style="color:#f29668;">= </span><span style="color:#f29718;">false</span><span style="color:#bfbab0cc;">;
+</span><span>                </span><span style="color:#ffb454;">systemd-boot</span><span>.</span><span style="color:#ffb454;">enable </span><span style="color:#f29668;">= </span><span style="color:#f29718;">true</span><span style="color:#bfbab0cc;">;
+</span><span>                </span><span style="color:#ffb454;">timeout </span><span style="color:#f29668;">= </span><span style="color:#f29718;">10</span><span style="color:#bfbab0cc;">; </span><span style="font-style:italic;color:#5c6773;"># seconds
+</span><span>              }</span><span style="color:#bfbab0cc;">;
+</span><span>
+</span><span>              </span><span style="color:#ffb454;">kernelParams </span><span style="color:#f29668;">= </span><span>[
+</span><span>                </span><span style="color:#c2d94c;">&quot;8250.nr_uarts=1&quot;
+</span><span>                </span><span style="color:#c2d94c;">&quot;console=ttyAMA0,115200&quot;
+</span><span>                </span><span style="color:#c2d94c;">&quot;console=tty1&quot;
+</span><span>              ]</span><span style="color:#bfbab0cc;">;
+</span><span>
+</span><span>              </span><span style="color:#ffb454;">supportedFilesystems </span><span style="color:#f29668;">= </span><span>[ </span><span style="color:#c2d94c;">&quot;zfs&quot; </span><span>]</span><span style="color:#bfbab0cc;">;
+</span><span>            }</span><span style="color:#bfbab0cc;">;
+</span><span>
+</span><span>            </span><span style="color:#ffb454;">fileSystems </span><span style="color:#f29668;">= </span><span>{
+</span><span>              </span><span style="color:#c2d94c;">&quot;/&quot; </span><span style="color:#f29668;">= </span><span>{
+</span><span>                </span><span style="color:#ffb454;">device </span><span style="color:#f29668;">= </span><span style="color:#c2d94c;">&quot;</span><span style="font-style:italic;color:#bfbab0;">${</span><span style="font-style:italic;color:#f29718;">zpool</span><span style="font-style:italic;color:#bfbab0;">}</span><span style="color:#c2d94c;">/local/root&quot;</span><span style="color:#bfbab0cc;">;
+</span><span>                </span><span style="color:#ffb454;">fsType </span><span style="color:#f29668;">= </span><span style="color:#c2d94c;">&quot;zfs&quot;</span><span style="color:#bfbab0cc;">;
+</span><span>                </span><span style="color:#ffb454;">options </span><span style="color:#f29668;">= </span><span>[ </span><span style="color:#c2d94c;">&quot;zfsutil&quot; </span><span>]</span><span style="color:#bfbab0cc;">;
+</span><span>              }</span><span style="color:#bfbab0cc;">;
+</span><span>
+</span><span>              </span><span style="color:#c2d94c;">&quot;/boot&quot; </span><span style="color:#f29668;">= </span><span>{
+</span><span>                </span><span style="color:#ffb454;">device </span><span style="color:#f29668;">= </span><span style="color:#f29718;">deviceBoot</span><span style="color:#bfbab0cc;">;
+</span><span>                </span><span style="color:#ffb454;">fsType </span><span style="color:#f29668;">= </span><span style="color:#c2d94c;">&quot;vfat&quot;</span><span style="color:#bfbab0cc;">;
+</span><span>                </span><span style="color:#ffb454;">options </span><span style="color:#f29668;">= </span><span>[ </span><span style="color:#c2d94c;">&quot;noatime&quot; </span><span>]</span><span style="color:#bfbab0cc;">;
+</span><span>              }</span><span style="color:#bfbab0cc;">;
+</span><span>
+</span><span>              </span><span style="color:#c2d94c;">&quot;/home/</span><span style="font-style:italic;color:#bfbab0;">${</span><span style="font-style:italic;color:#f29718;">user</span><span style="font-style:italic;color:#bfbab0;">}</span><span style="color:#c2d94c;">&quot; </span><span style="color:#f29668;">= </span><span>{
+</span><span>                </span><span style="color:#ffb454;">device </span><span style="color:#f29668;">= </span><span style="color:#c2d94c;">&quot;</span><span style="font-style:italic;color:#bfbab0;">${</span><span style="font-style:italic;color:#f29718;">zpool</span><span style="font-style:italic;color:#bfbab0;">}</span><span style="color:#c2d94c;">/persist/user/</span><span style="font-style:italic;color:#bfbab0;">${</span><span style="font-style:italic;color:#f29718;">user</span><span style="font-style:italic;color:#bfbab0;">}</span><span style="color:#c2d94c;">&quot;</span><span style="color:#bfbab0cc;">;
+</span><span>                </span><span style="color:#ffb454;">fsType </span><span style="color:#f29668;">= </span><span style="color:#c2d94c;">&quot;zfs&quot;</span><span style="color:#bfbab0cc;">;
+</span><span>              }</span><span style="color:#bfbab0cc;">;
+</span><span>
+</span><span>              </span><span style="color:#c2d94c;">&quot;/nix&quot; </span><span style="color:#f29668;">= </span><span>{
+</span><span>                </span><span style="color:#ffb454;">device </span><span style="color:#f29668;">= </span><span style="color:#c2d94c;">&quot;</span><span style="font-style:italic;color:#bfbab0;">${</span><span style="font-style:italic;color:#f29718;">zpool</span><span style="font-style:italic;color:#bfbab0;">}</span><span style="color:#c2d94c;">/local/nix&quot;</span><span style="color:#bfbab0cc;">;
+</span><span>                </span><span style="color:#ffb454;">fsType </span><span style="color:#f29668;">= </span><span style="color:#c2d94c;">&quot;zfs&quot;</span><span style="color:#bfbab0cc;">;
+</span><span>              }</span><span style="color:#bfbab0cc;">;
+</span><span>
+</span><span>              </span><span style="color:#c2d94c;">&quot;/persist&quot; </span><span style="color:#f29668;">= </span><span>{
+</span><span>                </span><span style="color:#ffb454;">device </span><span style="color:#f29668;">= </span><span style="color:#c2d94c;">&quot;</span><span style="font-style:italic;color:#bfbab0;">${</span><span style="font-style:italic;color:#f29718;">zpool</span><span style="font-style:italic;color:#bfbab0;">}</span><span style="color:#c2d94c;">/persist/system&quot;</span><span style="color:#bfbab0cc;">;
+</span><span>                </span><span style="color:#ffb454;">fsType </span><span style="color:#f29668;">= </span><span style="color:#c2d94c;">&quot;zfs&quot;</span><span style="color:#bfbab0cc;">;
+</span><span>                </span><span style="color:#ffb454;">neededForBoot </span><span style="color:#f29668;">= </span><span style="color:#f29718;">true</span><span style="color:#bfbab0cc;">;
+</span><span>              }</span><span style="color:#bfbab0cc;">;
+</span><span>
+</span><span>              </span><span style="color:#c2d94c;">&quot;/var/lib&quot; </span><span style="color:#f29668;">= </span><span>{
+</span><span>                </span><span style="color:#ffb454;">device </span><span style="color:#f29668;">= </span><span style="color:#c2d94c;">&quot;</span><span style="font-style:italic;color:#bfbab0;">${</span><span style="font-style:italic;color:#f29718;">zpool</span><span style="font-style:italic;color:#bfbab0;">}</span><span style="color:#c2d94c;">/persist/lib&quot;</span><span style="color:#bfbab0cc;">;
+</span><span>                </span><span style="color:#ffb454;">fsType </span><span style="color:#f29668;">= </span><span style="color:#c2d94c;">&quot;zfs&quot;</span><span style="color:#bfbab0cc;">;
+</span><span>              }</span><span style="color:#bfbab0cc;">;
+</span><span>
+</span><span>              </span><span style="color:#c2d94c;">&quot;/var/log/journal&quot; </span><span style="color:#f29668;">= </span><span>{
+</span><span>                </span><span style="color:#ffb454;">device </span><span style="color:#f29668;">= </span><span style="color:#c2d94c;">&quot;</span><span style="font-style:italic;color:#bfbab0;">${</span><span style="font-style:italic;color:#f29718;">zpool</span><span style="font-style:italic;color:#bfbab0;">}</span><span style="color:#c2d94c;">/persist/journal&quot;</span><span style="color:#bfbab0cc;">;
+</span><span>                </span><span style="color:#ffb454;">fsType </span><span style="color:#f29668;">= </span><span style="color:#c2d94c;">&quot;zfs&quot;</span><span style="color:#bfbab0cc;">;
+</span><span>                </span><span style="color:#ffb454;">neededForBoot </span><span style="color:#f29668;">= </span><span style="color:#f29718;">true</span><span style="color:#bfbab0cc;">;
+</span><span>              }</span><span style="color:#bfbab0cc;">;
+</span><span>            }</span><span style="color:#bfbab0cc;">;
+</span><span>
+</span><span>            </span><span style="color:#ffb454;">swapDevices </span><span style="color:#f29668;">= </span><span>[
+</span><span>              {
+</span><span>                </span><span style="color:#ffb454;">device </span><span style="color:#f29668;">= </span><span style="color:#c2d94c;">&quot;/dev/mapper/cryptswap&quot;</span><span style="color:#bfbab0cc;">;
+</span><span>              }
+</span><span>            ]</span><span style="color:#bfbab0cc;">;
+</span><span>
+</span><span>            </span><span style="color:#ffb454;">powerManagement</span><span>.</span><span style="color:#ffb454;">cpuFreqGovernor </span><span style="color:#f29668;">= </span><span style="color:#f29718;">lib</span><span style="color:#f29668;">.</span><span style="color:#f29718;">mkDefault </span><span style="color:#c2d94c;">&quot;ondemand&quot;</span><span style="color:#bfbab0cc;">;
+</span><span>
+</span><span>            </span><span style="color:#ffb454;">networking </span><span style="color:#f29668;">= </span><span>{
+</span><span>              </span><span style="color:#ff7733;">inherit </span><span style="color:#ffb454;">hostId hostName</span><span style="color:#bfbab0cc;">;
+</span><span>              </span><span style="color:#ffb454;">useDHCP </span><span style="color:#f29668;">= </span><span style="color:#f29718;">false</span><span style="color:#bfbab0cc;">;
+</span><span>              </span><span style="color:#ffb454;">interfaces</span><span>.</span><span style="color:#ffb454;">eth0</span><span>.</span><span style="color:#ffb454;">useDHCP </span><span style="color:#f29668;">= </span><span style="color:#f29718;">true</span><span style="color:#bfbab0cc;">;
+</span><span>            }</span><span style="color:#bfbab0cc;">;
+</span><span>
+</span><span>            </span><span style="color:#ffb454;">services </span><span style="color:#f29668;">= </span><span>{
+</span><span>              </span><span style="color:#ffb454;">openssh </span><span style="color:#f29668;">= </span><span>{
+</span><span>                </span><span style="color:#ffb454;">enable </span><span style="color:#f29668;">= </span><span style="color:#f29718;">true</span><span style="color:#bfbab0cc;">;
+</span><span>                </span><span style="color:#ffb454;">hostKeys </span><span style="color:#f29668;">= </span><span>[
+</span><span>                  {
+</span><span>                    </span><span style="color:#ffb454;">path </span><span style="color:#f29668;">= </span><span style="color:#c2d94c;">&quot;/persist/etc/ssh/ssh_host_ed25519_key&quot;</span><span style="color:#bfbab0cc;">;
+</span><span>                    </span><span style="color:#ffb454;">type </span><span style="color:#f29668;">= </span><span style="color:#c2d94c;">&quot;ed25519&quot;</span><span style="color:#bfbab0cc;">;
+</span><span>                  }
+</span><span>                ]</span><span style="color:#bfbab0cc;">;
+</span><span>              }</span><span style="color:#bfbab0cc;">;
+</span><span>              </span><span style="color:#ffb454;">piboxPwmFan</span><span>.</span><span style="color:#ffb454;">enable </span><span style="color:#f29668;">= </span><span style="color:#f29718;">true</span><span style="color:#bfbab0cc;">;
+</span><span>              </span><span style="color:#ffb454;">piboxFramebuffer</span><span>.</span><span style="color:#ffb454;">enable </span><span style="color:#f29668;">= </span><span style="color:#f29718;">true</span><span style="color:#bfbab0cc;">;
+</span><span>              </span><span style="color:#ffb454;">zfs </span><span style="color:#f29668;">= </span><span>{
+</span><span>                </span><span style="color:#ffb454;">autoScrub </span><span style="color:#f29668;">= </span><span>{
+</span><span>                  </span><span style="color:#ffb454;">enable </span><span style="color:#f29668;">= </span><span style="color:#f29718;">true</span><span style="color:#bfbab0cc;">;
+</span><span>                  </span><span style="color:#ffb454;">interval </span><span style="color:#f29668;">= </span><span style="color:#c2d94c;">&quot;monthly&quot;</span><span style="color:#bfbab0cc;">;
+</span><span>                }</span><span style="color:#bfbab0cc;">;
+</span><span>                </span><span style="color:#ffb454;">autoSnapshot</span><span>.</span><span style="color:#ffb454;">enable </span><span style="color:#f29668;">= </span><span style="color:#f29718;">true</span><span style="color:#bfbab0cc;">;
+</span><span>                </span><span style="color:#ffb454;">trim</span><span>.</span><span style="color:#ffb454;">enable </span><span style="color:#f29668;">= </span><span style="color:#f29718;">true</span><span style="color:#bfbab0cc;">;
+</span><span>              }</span><span style="color:#bfbab0cc;">;
+</span><span>            }</span><span style="color:#bfbab0cc;">;
+</span><span>
+</span><span>            </span><span style="color:#ffb454;">users</span><span>.</span><span style="color:#ffb454;">users</span><span>.</span><span style="color:#ffb454;">root</span><span>.</span><span style="color:#ffb454;">passwordFile </span><span style="color:#f29668;">= </span><span style="color:#c2d94c;">&quot;/persist/root/passwordfile&quot;</span><span style="color:#bfbab0cc;">;
+</span><span>            </span><span style="color:#ffb454;">users</span><span>.</span><span style="color:#ffb454;">users</span><span>.</span><span style="font-style:italic;color:#bfbab0;">${</span><span style="font-style:italic;color:#f29718;">user</span><span style="font-style:italic;color:#bfbab0;">} </span><span style="color:#f29668;">= </span><span>{
+</span><span>              </span><span style="color:#ffb454;">isNormalUser </span><span style="color:#f29668;">= </span><span style="color:#f29718;">true</span><span style="color:#bfbab0cc;">;
+</span><span>              </span><span style="color:#ffb454;">home </span><span style="color:#f29668;">= </span><span style="color:#c2d94c;">&quot;/home/</span><span style="font-style:italic;color:#bfbab0;">${</span><span style="font-style:italic;color:#f29718;">user</span><span style="font-style:italic;color:#bfbab0;">}</span><span style="color:#c2d94c;">&quot;</span><span style="color:#bfbab0cc;">;
+</span><span>              </span><span style="color:#ffb454;">openssh</span><span>.</span><span style="color:#ffb454;">authorizedKeys</span><span>.</span><span style="color:#ffb454;">keys </span><span style="color:#f29668;">= </span><span>[
+</span><span>                </span><span style="color:#f29718;">userSshKey
+</span><span>              ]</span><span style="color:#bfbab0cc;">;
+</span><span>            }</span><span style="color:#bfbab0cc;">;
+</span><span>
+</span><span>            </span><span style="font-style:italic;color:#5c6773;"># Other files to persist, e.g. NetworkManager
+</span><span>            </span><span style="font-style:italic;color:#5c6773;"># environment.etc.&quot;NetworkManager/system-connections&quot; = {
+</span><span>            </span><span style="font-style:italic;color:#5c6773;">#   source = &quot;/persist/etc/NetworkManager/system-connections/&quot;;
+</span><span>            </span><span style="font-style:italic;color:#5c6773;"># };
+</span><span>          })
+</span><span>        ]</span><span style="color:#bfbab0cc;">;
+</span><span>      }</span><span style="color:#bfbab0cc;">;
+</span><span>    }</span><span style="color:#bfbab0cc;">;
+</span><span>}
+</span></code></pre>
+
+        </div>
+
+        
+        <div class="pagination">
+            <div class="pagination__title">
+                <span class="pagination__title-h"></span>
+                <hr />
+            </div>
+            <div class="pagination__buttons">
+                    <span class="button previous">
+                        <a href="https://ipetkov.dev/blog/transparently-exposing-services-over-tailscale-and-the-lan/">
+                            <span class="button__icon">←</span>&nbsp;
+                            <span class="button__text">Transparently Exposing Services Over Tailscale and the LAN</span>
+                        </a>
+                    </span>
+                
+                </div>
+        </div>
+    
+    </div>
+
+    </div>
+
+    
+  <footer class="footer">
+    <div class="footer__inner">
+      <div class="copyright">
+        <span>© 
+    2023
+ Ivan Petkov</span>
+
+        <span class="copyright-theme">
+          <span class="copyright-theme-sep">:: </span>
+          Theme based on <a href="https://github.com/pawroman/zola-theme-terminimal/">Terminimal</a> by pawroman
+        </span>
+      </div>
+    </div>
+  </footer>
+
+
+</div>
+</body>
+
+</html>

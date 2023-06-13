@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <title>Introducing Crane: Composable and Cacheable Builds with Cargo and Nix | Ivan Petkov</title>
+    
+    <meta http-equiv="content-type" content="text/html; charset=utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1">
+    <meta name="robots" content="noodp"/>
+
+    <link rel="stylesheet" href="https://ipetkov.dev/style.css">
+    <link rel="stylesheet" href="https://ipetkov.dev/color/green.css">
+
+        <link rel="stylesheet" href="https://ipetkov.dev/color/background_blue.css">
+    
+    <link rel="stylesheet" href="https://ipetkov.dev/font-hack-subset.css">
+
+        <link rel="alternate" type="application/rss+xml" title="RSS" href="https://ipetkov.dev/rss.xml">
+    <meta property="og:title" content="Introducing Crane: Composable and Cacheable Builds with Cargo and Nix">
+<meta property="og:site_name" content="ipetkov.dev">
+<meta property="og:image" content="https://ipetkov.dev/favicon.png">
+<meta property="og:image:type" content="image/png">
+<meta property="og:image:alt" content="ipetkov.dev favicon">
+<meta property="og:url" content="https://ipetkov.dev/blog/introducing-crane/">
+<meta property="og:description" content="Crane is a Nix library for building cargo projects">
+<meta property="og:type" content="article">
+<link rel="icon" type="image/png" href="https://ipetkov.dev/favicon.png">
+<link rel="stylesheet" href="https://ipetkov.dev/overrides.css">
+<link rel="me" href="https://hachyderm.io/@ivan">
+<link rel="alternate" type="application/atom+xml" title="Ivan Petkov" href="https://ipetkov.dev/atom.xml"></head>
+
+<body class="">
+<div class="container">
+    
+    <header class="header">
+        <div class="header__inner">
+            <div class="header__logo">
+                    
+                <a href="https://ipetkov.dev" style="text-decoration: none;">
+                    <div class="logo">
+                      ipetkov.dev
+                    </div>
+                </a>
+            </div>
+        </div>
+
+        
+        <nav class="menu">
+            <ul class="menu__inner">
+                <li><a href="https://ipetkov.dev">home</a></li>
+            
+                <li><a href="https://ipetkov.dev/about">about</a></li>
+            
+                <li class="active"><a href="https://ipetkov.dev/blog">blog</a></li>
+            
+                <li><a href="https://ipetkov.dev/tags">tags</a></li>
+            </ul>
+        </nav>
+    
+    
+        
+    </header>
+    
+
+    <div class="content">
+        
+    <div class="post">
+        
+    <h1 class="post-title"><a href="https://ipetkov.dev/blog/introducing-crane/">Introducing Crane: Composable and Cacheable Builds with Cargo and Nix</a></h1>
+    <div class="post-meta-inline">
+        
+    <span class="post-date">
+            2022-01-22
+        </span>
+
+    </div>
+
+    
+        <span class="post-tags-inline">
+                :: tags:&nbsp;
+                <a class="post-tag" href="https://ipetkov.dev/tags/nixos/">#NixOS</a>&nbsp;
+                <a class="post-tag" href="https://ipetkov.dev/tags/cargo/">#cargo</a>&nbsp;
+                <a class="post-tag" href="https://ipetkov.dev/tags/crane/">#crane</a>&nbsp;
+                <a class="post-tag" href="https://ipetkov.dev/tags/rust/">#rust</a></span>
+    
+
+        
+        <div class="post-content">
+            <p>I'm pleased to announce the initial release of <a rel="nofollow noreferrer" href="https://github.com/ipetkov/crane">Crane</a>: a Nix library for
+building cargo projects!</p>
+<p>In a nutshell it offers:</p>
+<ul>
+<li><strong>Source fetching</strong>: automatically done using a Cargo.lock file</li>
+<li><strong>Incremental</strong>: build your workspace dependencies just once, then quickly lint,
+build, and test changes to your project without slowing down</li>
+<li><strong>Composable configuration</strong>: split builds and tests into granular steps. Gate CI without
+burdening downstream consumers building from source.</li>
+</ul>
+<span id="continue-reading"></span><h1 id="acknowledgements">Acknowledgements</h1>
+<p>I want to take a moment to acknowledge and give credit to the impressive work
+behind <a rel="nofollow noreferrer" href="https://github.com/nix-community/naersk">Naersk</a>. It has been a huge source of inspiration, especially since it
+absolutely nails a number of features like:</p>
+<ul>
+<li>automatic dependency handling with out needing to mess with SHAs yourself</li>
+<li>dependency artifacts can be built, cached, and reused independently of the
+project's source, making it a great fit for running in CI</li>
+<li>the defaults &quot;just work&quot; out of the box, regardless if a project is building
+applications, libraries, or an entire workspace of crates</li>
+</ul>
+<h2 id="motivation">Motivation</h2>
+<p>My biggest motivation for writing Crane was wanting to use an API that allows
+for build configurations which feel intuitive to write and easy to reconfigure
+without sacrificing the performance of cacheable artifacts.</p>
+<p>I find Naersk's configuration options work best when you are intimately familiar
+with its internals. And if you aren't, even a goal like &quot;run clippy on the
+project&quot; can leave you having to face evaluation errors, build errors,
+accidental cache invalidation, or the acceptance that a fraction of your build
+dependencies just have to be built twice...</p>
+<h1 id="philosophy">Philosophy</h1>
+<p>Crane is designed around the idea of composing cargo invocations such that they
+can take advantage of the artifacts generated in previous invocations. This
+allows for both flexible configurations and great caching (à la Cachix) in CI
+and local development builds.</p>
+<p>Here's how it works at a high level: when a cargo workspace is built its source
+is first transformed such that only the dependencies listed by the <code>Cargo.toml</code>
+and <code>Cargo.lock</code> files are built, and none of the crate's real source is
+included. This allows cargo to build all dependency crates and prevents Nix from
+invalidating the derivation whenever the source files are updated. Then, a
+second derivation is built, this time using the real source files, which also
+imports the cargo artifacts generated in the first step.</p>
+<p>This pattern can be used with any arbitrary sequence of commands, regardless of
+whether those commands are running additional lints, performing code coverage
+analysis, or even generating types from a model schema. Let's take a look at two
+examples at how very similar configurations can give us very different behavior!</p>
+<h2 id="example-one">Example One</h2>
+<p>Suppose we are developing a crate and want to run our CI assurance checks
+via <code>nix flake check</code>. Perhaps we want the CI gate to be very strict and block
+any changes which raise warnings when run with <code>cargo clippy</code>. Oh, and we want
+to enforce some code coverage too!</p>
+<p>Except we do not want to push our strict guidelines on any downstream consumers
+who may want to build our crate. Suppose they need to build the crate with a
+different compiler version (for one reason or another) which comes with a new lint
+whose warnings we have not yet addressed. We don't want to make their life
+harder, so we want to make sure we do not run <code>cargo clippy</code> as part of the
+crate's actual derivation, but at the same time, we don't want to have to
+rebuild dependencies from scratch.</p>
+<p>Here's how we can set up our flake to achieve our goals:</p>
+<pre data-lang="nix" style="background-color:#0f1419;color:#bfbab0;" class="language-nix "><code class="language-nix" data-lang="nix"><span>{
+</span><span>  </span><span style="color:#ffb454;">inputs </span><span style="color:#f29668;">= </span><span>{
+</span><span>    </span><span style="color:#ffb454;">nixpkgs</span><span>.</span><span style="color:#ffb454;">url </span><span style="color:#f29668;">= </span><span style="color:#c2d94c;">&quot;github:NixOS/nixpkgs/nixpkgs-unstable&quot;</span><span style="color:#bfbab0cc;">;
+</span><span>    </span><span style="color:#ffb454;">crane</span><span>.</span><span style="color:#ffb454;">url </span><span style="color:#f29668;">= </span><span style="color:#c2d94c;">&quot;github:ipetkov/crane&quot;</span><span style="color:#bfbab0cc;">;
+</span><span>    </span><span style="color:#ffb454;">crane</span><span>.</span><span style="color:#ffb454;">inputs</span><span>.</span><span style="color:#ffb454;">nixpkgs</span><span>.</span><span style="color:#ffb454;">follows </span><span style="color:#f29668;">= </span><span style="color:#c2d94c;">&quot;nixpkgs&quot;</span><span style="color:#bfbab0cc;">;
+</span><span>    </span><span style="color:#ffb454;">flake-utils</span><span>.</span><span style="color:#ffb454;">url </span><span style="color:#f29668;">= </span><span style="color:#c2d94c;">&quot;github:numtide/flake-utils&quot;</span><span style="color:#bfbab0cc;">;
+</span><span>    </span><span style="color:#ffb454;">flake-utils</span><span>.</span><span style="color:#ffb454;">inputs</span><span>.</span><span style="color:#ffb454;">nixpkgs</span><span>.</span><span style="color:#ffb454;">follows </span><span style="color:#f29668;">= </span><span style="color:#c2d94c;">&quot;nixpkgs&quot;</span><span style="color:#bfbab0cc;">;
+</span><span>  }</span><span style="color:#bfbab0cc;">;
+</span><span>
+</span><span>  </span><span style="color:#ffb454;">outputs </span><span style="color:#f29668;">= </span><span>{ </span><span style="color:#f29718;">self</span><span style="color:#f29668;">, </span><span style="color:#f29718;">nixpkgs</span><span style="color:#f29668;">, </span><span style="color:#f29718;">crane</span><span style="color:#f29668;">, </span><span style="color:#f29718;">flake-utils</span><span style="color:#f29668;">, ... </span><span>}:
+</span><span>    </span><span style="color:#f29718;">flake-utils</span><span style="color:#f29668;">.</span><span style="color:#f29718;">lib</span><span style="color:#f29668;">.</span><span style="color:#f29718;">eachDefaultSystem </span><span>(</span><span style="color:#f29718;">system</span><span>:
+</span><span>      </span><span style="color:#ff7733;">let
+</span><span>        </span><span style="color:#ffb454;">pkgs </span><span style="color:#f29668;">= </span><span style="color:#f07178;">import </span><span style="color:#f29718;">nixpkgs </span><span>{
+</span><span>          </span><span style="color:#ff7733;">inherit </span><span style="color:#ffb454;">system</span><span style="color:#bfbab0cc;">;
+</span><span>        }</span><span style="color:#bfbab0cc;">;
+</span><span>
+</span><span>        </span><span style="color:#ffb454;">craneLib </span><span style="color:#f29668;">= </span><span style="color:#f29718;">crane</span><span style="color:#f29668;">.</span><span style="color:#f29718;">lib</span><span style="color:#f29668;">.</span><span style="font-style:italic;color:#bfbab0;">${</span><span style="font-style:italic;color:#f29718;">system</span><span style="font-style:italic;color:#bfbab0;">}</span><span style="color:#bfbab0cc;">;
+</span><span>        </span><span style="color:#ffb454;">src </span><span style="color:#f29668;">= </span><span style="color:#c2d94c;">./.</span><span style="color:#bfbab0cc;">;
+</span><span>
+</span><span>        </span><span style="font-style:italic;color:#5c6773;"># Build *just* the cargo dependencies, so we can reuse
+</span><span>        </span><span style="font-style:italic;color:#5c6773;"># all of that work (e.g. via cachix) when running in CI
+</span><span>        </span><span style="color:#ffb454;">cargoArtifacts </span><span style="color:#f29668;">= </span><span style="color:#f29718;">craneLib</span><span style="color:#f29668;">.</span><span style="color:#f29718;">buildDepsOnly </span><span>{
+</span><span>          </span><span style="color:#ff7733;">inherit </span><span style="color:#ffb454;">src</span><span style="color:#bfbab0cc;">;
+</span><span>        }</span><span style="color:#bfbab0cc;">;
+</span><span>
+</span><span>        </span><span style="font-style:italic;color:#5c6773;"># Run clippy (and deny all warnings) on the crate source,
+</span><span>        </span><span style="font-style:italic;color:#5c6773;"># resuing the dependency artifacts (e.g. from build scripts or
+</span><span>        </span><span style="font-style:italic;color:#5c6773;"># proc-macros) from above.
+</span><span>        </span><span style="font-style:italic;color:#5c6773;">#
+</span><span>        </span><span style="font-style:italic;color:#5c6773;"># Note that this is done as a separate derivation so it
+</span><span>        </span><span style="font-style:italic;color:#5c6773;"># does not impact building just the crate by itself.
+</span><span>        </span><span style="color:#ffb454;">my-crate-clippy </span><span style="color:#f29668;">= </span><span style="color:#f29718;">craneLib</span><span style="color:#f29668;">.</span><span style="color:#f29718;">cargoClippy </span><span>{
+</span><span>          </span><span style="color:#ff7733;">inherit </span><span style="color:#ffb454;">cargoArtifacts src</span><span style="color:#bfbab0cc;">;
+</span><span>          </span><span style="color:#ffb454;">cargoClippyExtraArgs </span><span style="color:#f29668;">= </span><span style="color:#c2d94c;">&quot;-- --deny warnings&quot;</span><span style="color:#bfbab0cc;">;
+</span><span>        }</span><span style="color:#bfbab0cc;">;
+</span><span>
+</span><span>        </span><span style="font-style:italic;color:#5c6773;"># Build the actual crate itself, reusing the dependency
+</span><span>        </span><span style="font-style:italic;color:#5c6773;"># artifacts from above.
+</span><span>        </span><span style="color:#ffb454;">my-crate </span><span style="color:#f29668;">= </span><span style="color:#f29718;">craneLib</span><span style="color:#f29668;">.</span><span style="color:#f29718;">buildPackage </span><span>{
+</span><span>          </span><span style="color:#ff7733;">inherit </span><span style="color:#ffb454;">cargoArtifacts src</span><span style="color:#bfbab0cc;">;
+</span><span>        }</span><span style="color:#bfbab0cc;">;
+</span><span>
+</span><span>        </span><span style="font-style:italic;color:#5c6773;"># Also run the crate tests under cargo-tarpaulin so that we can keep
+</span><span>        </span><span style="font-style:italic;color:#5c6773;"># track of code coverage
+</span><span>        </span><span style="color:#ffb454;">my-crate-coverage </span><span style="color:#f29668;">= </span><span style="color:#f29718;">craneLib</span><span style="color:#f29668;">.</span><span style="color:#f29718;">cargoTarpaulin </span><span>{
+</span><span>          </span><span style="color:#ff7733;">inherit </span><span style="color:#ffb454;">cargoArtifacts src</span><span style="color:#bfbab0cc;">;
+</span><span>        }</span><span style="color:#bfbab0cc;">;
+</span><span>      </span><span style="color:#ff7733;">in
+</span><span>      {
+</span><span>        </span><span style="color:#ffb454;">defaultPackage </span><span style="color:#f29668;">= </span><span style="color:#f29718;">my-crate</span><span style="color:#bfbab0cc;">;
+</span><span>        </span><span style="color:#ffb454;">checks </span><span style="color:#f29668;">= </span><span>{
+</span><span>         </span><span style="color:#ff7733;">inherit
+</span><span>           </span><span style="font-style:italic;color:#5c6773;"># Build the crate as part of `nix flake check` for convenience
+</span><span>           </span><span style="color:#ffb454;">my-crate
+</span><span>           </span><span style="color:#ffb454;">my-crate-clippy
+</span><span>           </span><span style="color:#ffb454;">my-crate-coverage</span><span style="color:#bfbab0cc;">;
+</span><span>        }</span><span style="color:#bfbab0cc;">;
+</span><span>      })</span><span style="color:#bfbab0cc;">;
+</span><span>}
+</span></code></pre>
+<p>When we run <code>nix flake check</code> the following will happen:</p>
+<ol>
+<li>The sources for any dependency crates will be fetched</li>
+<li>They will be built without our crate's code and the artifacts propagated</li>
+<li>Our crate, the clippy checks, and code coverage collection will be built,
+each reusing the same set of artifacts from the initial source-free build. If
+enough cores are available to Nix it may build all three derivations
+completely in parallel, or schedule them in some arbitrary order.</li>
+</ol>
+<p>Splitting up our builds like this also gives us the benefit of granular control
+over what is rebuilt. Suppose we change our mind and decide to adjust the clippy
+flags (e.g. to allow certain lints or forbid others). Doing so will <em>only</em>
+rebuild the clippy derivation, without having to rebuild and rerun any of our
+other tests!</p>
+<figure>
+  <img
+    src="./parallel.dot.svg"
+    alt="The clippy, my-crate, and coverage derivations each depend on the src source and the deps derivation. The deps derivation depends on the crates.io sources."
+  />
+  <figcaption>
+    The arrows show which way the results "flow", from sources (represented in
+    boxes) to intermediate and final derivations (represented as circles).
+  </figcaption>
+</figure>
+<h2 id="example-two">Example Two</h2>
+<p>Let's take an alternative approach to the example above. Suppose instead that we
+care more about not wasting any resources building certain tests (even if they
+would succeed!) if another particular test fails. Perhaps binary substitutes are
+readily available so that we do not mind if anyone building from source is bound
+by our rules, and we can be sure that all tests have passed as part of the
+build.</p>
+<pre data-lang="nix" style="background-color:#0f1419;color:#bfbab0;" class="language-nix "><code class="language-nix" data-lang="nix"><span>{
+</span><span>  </span><span style="color:#ffb454;">inputs </span><span style="color:#f29668;">= </span><span>{
+</span><span>    </span><span style="color:#ffb454;">nixpkgs</span><span>.</span><span style="color:#ffb454;">url </span><span style="color:#f29668;">= </span><span style="color:#c2d94c;">&quot;github:NixOS/nixpkgs/nixpkgs-unstable&quot;</span><span style="color:#bfbab0cc;">;
+</span><span>    </span><span style="color:#ffb454;">crane</span><span>.</span><span style="color:#ffb454;">url </span><span style="color:#f29668;">= </span><span style="color:#c2d94c;">&quot;github:ipetkov/crane&quot;</span><span style="color:#bfbab0cc;">;
+</span><span>    </span><span style="color:#ffb454;">crane</span><span>.</span><span style="color:#ffb454;">inputs</span><span>.</span><span style="color:#ffb454;">nixpkgs</span><span>.</span><span style="color:#ffb454;">follows </span><span style="color:#f29668;">= </span><span style="color:#c2d94c;">&quot;nixpkgs&quot;</span><span style="color:#bfbab0cc;">;
+</span><span>    </span><span style="color:#ffb454;">flake-utils</span><span>.</span><span style="color:#ffb454;">url </span><span style="color:#f29668;">= </span><span style="color:#c2d94c;">&quot;github:numtide/flake-utils&quot;</span><span style="color:#bfbab0cc;">;
+</span><span>    </span><span style="color:#ffb454;">flake-utils</span><span>.</span><span style="color:#ffb454;">inputs</span><span>.</span><span style="color:#ffb454;">nixpkgs</span><span>.</span><span style="color:#ffb454;">follows </span><span style="color:#f29668;">= </span><span style="color:#c2d94c;">&quot;nixpkgs&quot;</span><span style="color:#bfbab0cc;">;
+</span><span>  }</span><span style="color:#bfbab0cc;">;
+</span><span>
+</span><span>  </span><span style="color:#ffb454;">outputs </span><span style="color:#f29668;">= </span><span>{ </span><span style="color:#f29718;">self</span><span style="color:#f29668;">, </span><span style="color:#f29718;">nixpkgs</span><span style="color:#f29668;">, </span><span style="color:#f29718;">crane</span><span style="color:#f29668;">, </span><span style="color:#f29718;">flake-utils</span><span style="color:#f29668;">, ... </span><span>}:
+</span><span>    </span><span style="color:#f29718;">flake-utils</span><span style="color:#f29668;">.</span><span style="color:#f29718;">lib</span><span style="color:#f29668;">.</span><span style="color:#f29718;">eachDefaultSystem </span><span>(</span><span style="color:#f29718;">system</span><span>:
+</span><span>      </span><span style="color:#ff7733;">let
+</span><span>        </span><span style="color:#ffb454;">pkgs </span><span style="color:#f29668;">= </span><span style="color:#f07178;">import </span><span style="color:#f29718;">nixpkgs </span><span>{
+</span><span>          </span><span style="color:#ff7733;">inherit </span><span style="color:#ffb454;">system</span><span style="color:#bfbab0cc;">;
+</span><span>        }</span><span style="color:#bfbab0cc;">;
+</span><span>
+</span><span>        </span><span style="color:#ffb454;">craneLib </span><span style="color:#f29668;">= </span><span style="color:#f29718;">crane</span><span style="color:#f29668;">.</span><span style="color:#f29718;">lib</span><span style="color:#f29668;">.</span><span style="font-style:italic;color:#bfbab0;">${</span><span style="font-style:italic;color:#f29718;">system</span><span style="font-style:italic;color:#bfbab0;">}</span><span style="color:#bfbab0cc;">;
+</span><span>        </span><span style="color:#ffb454;">src </span><span style="color:#f29668;">= </span><span style="color:#c2d94c;">./.</span><span style="color:#bfbab0cc;">;
+</span><span>
+</span><span>        </span><span style="font-style:italic;color:#5c6773;"># Build *just* the cargo dependencies, so we can reuse
+</span><span>        </span><span style="font-style:italic;color:#5c6773;"># all of that work (e.g. via cachix) when running in CI
+</span><span>        </span><span style="color:#ffb454;">cargoArtifacts </span><span style="color:#f29668;">= </span><span style="color:#f29718;">craneLib</span><span style="color:#f29668;">.</span><span style="color:#f29718;">buildDepsOnly </span><span>{
+</span><span>          </span><span style="color:#ff7733;">inherit </span><span style="color:#ffb454;">src</span><span style="color:#bfbab0cc;">;
+</span><span>        }</span><span style="color:#bfbab0cc;">;
+</span><span>
+</span><span>        </span><span style="font-style:italic;color:#5c6773;"># First, run clippy (and deny all warnings) on the crate source.
+</span><span>        </span><span style="color:#ffb454;">my-crate-clippy </span><span style="color:#f29668;">= </span><span style="color:#f29718;">craneLib</span><span style="color:#f29668;">.</span><span style="color:#f29718;">cargoClippy </span><span>{
+</span><span>          </span><span style="color:#ff7733;">inherit </span><span style="color:#ffb454;">cargoArtifacts src</span><span style="color:#bfbab0cc;">;
+</span><span>          </span><span style="color:#ffb454;">cargoClippyExtraArgs </span><span style="color:#f29668;">= </span><span style="color:#c2d94c;">&quot;-- --deny warnings&quot;</span><span style="color:#bfbab0cc;">;
+</span><span>        }</span><span style="color:#bfbab0cc;">;
+</span><span>
+</span><span>        </span><span style="font-style:italic;color:#5c6773;"># Next, we want to run the tests and collect code-coverage, _but only if
+</span><span>        </span><span style="font-style:italic;color:#5c6773;"># the clippy checks pass_ so we do not waste any extra cycles.
+</span><span>        </span><span style="color:#ffb454;">my-crate-coverage </span><span style="color:#f29668;">= </span><span style="color:#f29718;">craneLib</span><span style="color:#f29668;">.</span><span style="color:#f29718;">cargoTarpaulin </span><span>{
+</span><span>          </span><span style="color:#ff7733;">inherit </span><span style="color:#ffb454;">src</span><span style="color:#bfbab0cc;">;
+</span><span>          </span><span style="color:#ffb454;">cargoArtifacts </span><span style="color:#f29668;">= </span><span style="color:#f29718;">my-crate-clippy</span><span style="color:#bfbab0cc;">;
+</span><span>        }</span><span style="color:#bfbab0cc;">;
+</span><span>
+</span><span>        </span><span style="font-style:italic;color:#5c6773;"># Build the actual crate itself, _but only if the previous tests pass_.
+</span><span>        </span><span style="color:#ffb454;">my-crate </span><span style="color:#f29668;">= </span><span style="color:#f29718;">craneLib</span><span style="color:#f29668;">.</span><span style="color:#f29718;">buildPackage </span><span>{
+</span><span>          </span><span style="color:#ffb454;">cargoArtifacts </span><span style="color:#f29668;">= </span><span style="color:#f29718;">my-crate-coverage</span><span style="color:#bfbab0cc;">;
+</span><span>          </span><span style="color:#ff7733;">inherit </span><span style="color:#ffb454;">src</span><span style="color:#bfbab0cc;">;
+</span><span>        }</span><span style="color:#bfbab0cc;">;
+</span><span>      </span><span style="color:#ff7733;">in
+</span><span>      {
+</span><span>        </span><span style="color:#ffb454;">defaultPackage </span><span style="color:#f29668;">= </span><span style="color:#f29718;">my-crate</span><span style="color:#bfbab0cc;">;
+</span><span>        </span><span style="color:#ffb454;">checks </span><span style="color:#f29668;">= </span><span>{
+</span><span>         </span><span style="color:#ff7733;">inherit
+</span><span>           </span><span style="font-style:italic;color:#5c6773;"># Build the crate as part of `nix flake check` for convenience
+</span><span>           </span><span style="color:#ffb454;">my-crate
+</span><span>           </span><span style="color:#ffb454;">my-crate-coverage</span><span style="color:#bfbab0cc;">;
+</span><span>        }</span><span style="color:#bfbab0cc;">;
+</span><span>      })</span><span style="color:#bfbab0cc;">;
+</span><span>}
+</span></code></pre>
+<p>When we run <code>nix flake check</code> the following will happen:</p>
+<ol>
+<li>The sources for any dependency crates will be fetched</li>
+<li>They will be built without our crate's code and the artifacts propagated</li>
+<li>Next the clippy checks will run, reusing the dependency artifacts above.</li>
+<li>Next the code coverage tests will run, reusing the artifacts from the clippy
+run</li>
+<li>Finally the actual crate itself is built</li>
+</ol>
+<p>In this case we lose the ability to build derivations independently, but we gain
+the ability to enforce a strict build order. However, we can easily change our
+mind, which would be much more difficult if we had written everything as one
+giant derivation.</p>
+<figure>
+  <img
+    src="./sequential.dot.svg"
+    alt="The my-crate derivation depends on the src source and the coverage derivation. The coverage derivation depends on the src source and the clippy derivation. The clippy derivation depends on the src source and the deps derivation. The deps derivation depends on the crates.io sources."
+  />
+  <figcaption>
+    The arrows show which way the results "flow", from sources (represented in
+    boxes) to intermediate and final derivations (represented as circles).
+  </figcaption>
+</figure>
+<h1 id="try-it-out">Try it out</h1>
+<p>I wanted to get an initial version out in the open, but there is, of course,
+more work to be done. <del>Support for git dependencies and private registries is
+missing, but something I'd like to add in the near future.</del></p>
+<p>In the meantime, feel free to check it out for yourself and kick the tires. The
+<a rel="nofollow noreferrer" href="https://github.com/ipetkov/crane#getting-started">getting started</a> guide, <a rel="nofollow noreferrer" href="https://github.com/ipetkov/crane/tree/master/examples">examples</a>, and <a rel="nofollow noreferrer" href="https://github.com/ipetkov/crane/blob/master/docs/API.md">API</a> documentation will be useful
+resources.</p>
+<p>I'd love to know what you think!</p>
+<p><em>Edit 2022-01-30: alternate cargo registry support has landed in Crane v0.2.0!</em></p>
+<p><em>Edit 2022-02-11: git dependency support has landed in Crane v0.3.0!</em></p>
+
+        </div>
+
+        
+        <div class="pagination">
+            <div class="pagination__title">
+                <span class="pagination__title-h"></span>
+                <hr />
+            </div>
+            <div class="pagination__buttons">
+                    <span class="button previous">
+                        <a href="https://ipetkov.dev/blog/tips-and-tricks-for-nix-flakes/">
+                            <span class="button__icon">←</span>&nbsp;
+                            <span class="button__text">Tips and Tricks for Nix Flakes</span>
+                        </a>
+                    </span>
+                
+                
+                    <span class="button next">
+                        <a href="https://ipetkov.dev/blog/crane-support-for-alt-registries-and-git-deps/">
+                            <span class="button__text">Crane Support for Alternative Registries and Git Dependencies</span>&nbsp;
+                            <span class="button__icon">→</span>
+                        </a>
+                    </span>
+                </div>
+        </div>
+    
+    </div>
+
+    </div>
+
+    
+  <footer class="footer">
+    <div class="footer__inner">
+      <div class="copyright">
+        <span>© 
+    2023
+ Ivan Petkov</span>
+
+        <span class="copyright-theme">
+          <span class="copyright-theme-sep">:: </span>
+          Theme based on <a href="https://github.com/pawroman/zola-theme-terminimal/">Terminimal</a> by pawroman
+        </span>
+      </div>
+    </div>
+  </footer>
+
+
+</div>
+</body>
+
+</html>

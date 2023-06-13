@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <title>Bisecting Nix Configurations | Ivan Petkov</title>
+    
+    <meta http-equiv="content-type" content="text/html; charset=utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1">
+    <meta name="robots" content="noodp"/>
+
+    <link rel="stylesheet" href="https://ipetkov.dev/style.css">
+    <link rel="stylesheet" href="https://ipetkov.dev/color/green.css">
+
+        <link rel="stylesheet" href="https://ipetkov.dev/color/background_blue.css">
+    
+    <link rel="stylesheet" href="https://ipetkov.dev/font-hack-subset.css">
+
+        <link rel="alternate" type="application/rss+xml" title="RSS" href="https://ipetkov.dev/rss.xml">
+    <meta property="og:title" content="Bisecting Nix Configurations">
+<meta property="og:site_name" content="ipetkov.dev">
+<meta property="og:image" content="https://ipetkov.dev/favicon.png">
+<meta property="og:image:type" content="image/png">
+<meta property="og:image:alt" content="ipetkov.dev favicon">
+<meta property="og:url" content="https://ipetkov.dev/blog/bisecting-nix-configurations/">
+<meta property="og:description" content="Using Nix Flakes to quickly find a commit breaking my workflow">
+<meta property="og:type" content="article">
+<link rel="icon" type="image/png" href="https://ipetkov.dev/favicon.png">
+<link rel="stylesheet" href="https://ipetkov.dev/overrides.css">
+<link rel="me" href="https://hachyderm.io/@ivan">
+<link rel="alternate" type="application/atom+xml" title="Ivan Petkov" href="https://ipetkov.dev/atom.xml"></head>
+
+<body class="">
+<div class="container">
+    
+    <header class="header">
+        <div class="header__inner">
+            <div class="header__logo">
+                    
+                <a href="https://ipetkov.dev" style="text-decoration: none;">
+                    <div class="logo">
+                      ipetkov.dev
+                    </div>
+                </a>
+            </div>
+        </div>
+
+        
+        <nav class="menu">
+            <ul class="menu__inner">
+                <li><a href="https://ipetkov.dev">home</a></li>
+            
+                <li><a href="https://ipetkov.dev/about">about</a></li>
+            
+                <li class="active"><a href="https://ipetkov.dev/blog">blog</a></li>
+            
+                <li><a href="https://ipetkov.dev/tags">tags</a></li>
+            </ul>
+        </nav>
+    
+    
+        
+    </header>
+    
+
+    <div class="content">
+        
+    <div class="post">
+        
+    <h1 class="post-title"><a href="https://ipetkov.dev/blog/bisecting-nix-configurations/">Bisecting Nix Configurations</a></h1>
+    <div class="post-meta-inline">
+        
+    <span class="post-date">
+            2022-07-29
+        </span>
+
+    </div>
+
+    
+        <span class="post-tags-inline">
+                :: tags:&nbsp;
+                <a class="post-tag" href="https://ipetkov.dev/tags/nixos/">#NixOS</a>&nbsp;
+                <a class="post-tag" href="https://ipetkov.dev/tags/debugging/">#debugging</a>&nbsp;
+                <a class="post-tag" href="https://ipetkov.dev/tags/flakes/">#flakes</a></span>
+    
+
+        
+        <div class="post-content">
+            <p>I live my life dangerously. And by that I mean I like to run <em>unstable</em>
+versions of various software that I use daily and prefer to work as I expect
+them. Sometimes a change will land and break my workflow, though Nix makes this
+tolerable since I can always switch back to an older version of my
+configuration.</p>
+<p>Except sometimes the breakage isn't due to a bug but an intentional change
+in upstream defaults, and in those cases the solution is to update my configs
+appropriately. The hard part is figuring out <em>how and why</em> they broke especially
+since I don't always pay close attention to every change landing upstream.</p>
+<p>Here's how I used Nix to find out what broke my workflow.</p>
+<span id="continue-reading"></span><h1 id="background">Background</h1>
+<p>I run a nightly version of Neovim which I update about once a week. A few days
+ago I suddenly noticed a change in behavior which I didn't like. The specific
+change in question isn't so important, the key part is that I had no idea what
+led to it or what was to blame, so the technique I'm about to demonstrate is a
+good aid for diagnosing when something previously unnoticed goes wrong.</p>
+<blockquote>
+<p>In this case Neovim changed the default behavior of scrolling the mouse.
+Previously it would move the cursor, but the new default scrolls the screen
+without moving the cursor. I wasn't sure what option controls this value, and
+neither digging into the help pages, nor stackoverflow, nor glancing at the
+recent issues and commits on the Neovim repo answered my question.</p>
+<p>Ultimately I could have probably trawled through the changelog but a) that did
+not cross my mind, and b) I wanted to quickly get to the bottom of the exact
+commit which landed the change instead of spending more time guessing.</p>
+</blockquote>
+<h1 id="bisecting-a-nix-flake">Bisecting a Nix Flake</h1>
+<p>I deploy my <a rel="nofollow noreferrer" href="https://github.com/ipetkov/dotfiles">dotfiles</a> through a Nix flake whose git history contains a paper
+trail of every change I've ever made on my systems. They use a number of
+different inputs (other dependencies) such as <a rel="nofollow noreferrer" href="https://github.com/NixOS/nixpkgs">nixpkgs</a>, <a rel="nofollow noreferrer" href="https://github.com/nix-community/home-manager">home-manager</a>, and
+<a rel="nofollow noreferrer" href="https://github.com/nix-community/neovim-nightly-overlay">neovim-nightly-overlay</a> and sometimes it isn't clear if undesired behavior is
+due to a bug in a specific package or from a misconfiguration in a Nix module
+somewhere. The situation is also exacerbated since I tend to update all inputs
+at once meaning there isn't one obvious culprit.</p>
+<p>Git has a feature to allow <em>bisecting</em> the commit history: basically you mark
+some commit known <em>to include</em> the behavior and another commit known <em>to not include</em>
+the behavior and git will begin checking commits &quot;halfway&quot; between them
+(handling merge commits for you automatically). At each step on the way it asks
+&quot;does this commit contain the behavior?&quot; and your response allows it to steer
+its search appropriately.</p>
+<p>In my case I knew the bad behavior showed up recently, so I randomly picked a
+commit of my dotfiles to double check as a &quot;good&quot; commit. The latest commit was
+obviously &quot;bad&quot;.</p>
+<pre data-lang="sh" style="background-color:#0f1419;color:#bfbab0;" class="language-sh "><code class="language-sh" data-lang="sh"><span style="color:#ffb454;">git</span><span> clone https://github.com/ipetkov/dotfiles
+</span><span style="color:#f07178;">cd</span><span> dotfiles
+</span><span>
+</span><span style="font-style:italic;color:#5c6773;"># Check out a random commit a week or two back
+</span><span style="color:#ffb454;">git</span><span> checkout e5f21cebb9a4323fcc14397136dac6780a05ec87
+</span><span style="font-style:italic;color:#5c6773;"># Test out the config to see the behavior
+</span><span style="color:#ffb454;">sudo</span><span> nixos-rebuild</span><span style="color:#f29718;"> --flake</span><span> .# test
+</span><span style="font-style:italic;color:#5c6773;"># Check for offending behavior, looks good
+</span><span style="color:#ffb454;">vim</span><span> some_long_file
+</span><span>
+</span><span style="font-style:italic;color:#5c6773;"># Start a git bisect and mark the &quot;good&quot; and &quot;bad&quot; commits
+</span><span style="color:#ffb454;">git</span><span> bisect start
+</span><span style="color:#ffb454;">git</span><span> bisect good e5f21cebb9a4323fcc14397136dac6780a05ec87
+</span><span style="font-style:italic;color:#5c6773;"># current HEAD
+</span><span style="color:#ffb454;">git</span><span> bisect bad 09e21eede76234ff66a539079ff14f5b170e56d5
+</span><span>
+</span><span style="font-style:italic;color:#5c6773;"># Optional visualize the bisection progress
+</span><span style="color:#ffb454;">git</span><span> bisect visualize
+</span></code></pre>
+<p>Then for each commit of my dotfiles I would deploy my configuration and verify
+if the undesired behavior is there or not. It was a bit annoying having to wait
+for systemd to reload random services, but I pushed through since there weren't
+that many revisions to test and checking for the offending behavior was very
+fast.</p>
+<pre data-lang="sh" style="background-color:#0f1419;color:#bfbab0;" class="language-sh "><code class="language-sh" data-lang="sh"><span style="font-style:italic;color:#5c6773;"># For each commit git 
+</span><span style="color:#ffb454;">sudo</span><span> nixos-rebuild</span><span style="color:#f29718;"> --flake</span><span> .# test
+</span><span>
+</span><span style="font-style:italic;color:#5c6773;"># Check for offending behavior
+</span><span style="color:#ffb454;">vim</span><span> some_long_file
+</span><span>
+</span><span style="font-style:italic;color:#5c6773;"># If the behavior was gone, mark the commit as good
+</span><span style="color:#ffb454;">git</span><span> bisect good
+</span><span>
+</span><span style="font-style:italic;color:#5c6773;"># Otherwise mark it as bad
+</span><span style="color:#ffb454;">git</span><span> bisect bad
+</span></code></pre>
+<p>Eventually I landed on this <a rel="nofollow noreferrer" href="https://github.com/ipetkov/dotfiles/commit/4e5969ce2a88dc79c81334cc557cfc3e32bfa03b">bad commit</a> which shows exactly to which commit
+each dependency was updated, meaning this gives a finite set of changes to
+continue testing which <em>must</em> include the reason for the behavior change.</p>
+<blockquote>
+<p>Cleaning up before continuing on is as easy as <code>git bisect reset</code></p>
+</blockquote>
+<h1 id="verifying-inputs">Verifying Inputs</h1>
+<p>The next step was to figure out which input led to the change in behavior. I
+started by updating my <code>flake.lock</code> file to use the all the commits from before
+the bad update was applied. One by one I updated them to their version found in
+the <a rel="nofollow noreferrer" href="https://github.com/ipetkov/dotfiles/commit/4e5969ce2a88dc79c81334cc557cfc3e32bfa03b">bad commit</a>, testing each time.</p>
+<blockquote>
+<p>There is a way to accomplish this without editing the <code>flake.lock</code> file and
+specify commit overrides directly when invoking Nix like: <code>nixos-rebuild --flake .# --override-input nixpkgs github:NixOS/nixpkgs/$COMMIT_SHA</code>. I
+didn't bother doing that since editing the <code>flake.lock</code> was faster without
+having to juggle multiple input overrides on the command line each time.</p>
+</blockquote>
+<ol>
+<li>First I changed the <code>nixpkgs-stable</code> input (which I know was not used in the
+configuration for the machine I was using, but it was a good sanity check)
+and the behavior did not show up (as expected).</li>
+<li>Next I changed the <code>nixpkgs</code> input and the behavior did not show up. Clearly
+this was not introduced by a change there</li>
+<li>Next I changed the <code>home-manager</code> input and the behavior did not show up
+either. Clearly the change was not introduced due to a configuration issue
+there</li>
+<li>Then I changed the <code>neovim-nightly-overlay</code> input and the behavior did not
+show up. This input largely exists to keep track of the <code>neovim</code> input, and
+since I was manually updating the input hashes it clearly did not result in
+the bad behavior showing up.</li>
+<li>Lastly I changed the <code>neovim</code> input and <em>bingo</em> the behavior showed up. Now I
+knew that the change must have happened somewhere between
+<a rel="nofollow noreferrer" href="https://github.com/neovim/neovim/commit/9777907467b29e890556db287b6a9995c0024896">9777907467b29e890556db287b6a9995c0024896</a>
+and
+<a rel="nofollow noreferrer" href="https://github.com/neovim/neovim/commit/bb7853a62dc32baafa7416b94c97f985287f39e2">bb7853a62dc32baafa7416b94c97f985287f39e2</a></li>
+</ol>
+<h1 id="bisecting-neovim">Bisecting Neovim</h1>
+<p>Knowing the exact range which includes the behavior change means we can run
+another git bisect. In this case I directly checked out the Neovim repo since I
+could test more quickly that way without having to redeploy my NixOS
+configuration.</p>
+<pre data-lang="sh" style="background-color:#0f1419;color:#bfbab0;" class="language-sh "><code class="language-sh" data-lang="sh"><span style="color:#ffb454;">git</span><span> clone https://github.com/neovim/neovim.git
+</span><span style="color:#f07178;">cd</span><span> neovim/contrib
+</span><span>
+</span><span style="color:#ffb454;">git</span><span> bisect start
+</span><span style="color:#ffb454;">git</span><span> bisect good 9777907467b29e890556db287b6a9995c0024896
+</span><span style="color:#ffb454;">git</span><span> bisect bad bb7853a62dc32baafa7416b94c97f985287f39e2
+</span></code></pre>
+<p>Then for each commit we test for the undesired behavior.</p>
+<pre data-lang="sh" style="background-color:#0f1419;color:#bfbab0;" class="language-sh "><code class="language-sh" data-lang="sh"><span style="font-style:italic;color:#5c6773;"># Build and run all in one step to check for offending behavior
+</span><span style="color:#ffb454;">nix</span><span> run .#neovim</span><span style="color:#f29668;"> --</span><span> some_file
+</span><span>
+</span><span style="font-style:italic;color:#5c6773;"># If the behavior was gone, mark the commit as good
+</span><span style="color:#ffb454;">git</span><span> bisect good
+</span><span>
+</span><span style="font-style:italic;color:#5c6773;"># Otherwise mark it as bad
+</span><span style="color:#ffb454;">git</span><span> bisect bad
+</span><span>
+</span><span style="font-style:italic;color:#5c6773;"># Alternatively skip if a commit can&#39;t build
+</span><span style="color:#ffb454;">git</span><span> bisect skip
+</span></code></pre>
+<p>At last, this process yields the <a rel="nofollow noreferrer" href="https://github.com/neovim/neovim/commit/eb9b93b5e025386ec9431c9d35a4a073d6946d1d">exact commit</a> which introduced a change in
+default behavior. It was pretty easy to <a rel="nofollow noreferrer" href="https://github.com/ipetkov/dotfiles/commit/353aaa909d384127ff573d3b7d881b249b2295cd">apply the fix</a> when that was all I had
+to review.</p>
+<h1 id="conclusion">Conclusion</h1>
+<p>In the end I was able to go from noticing an unexpected behavior to finding <em>a
+single commit introducing the behavior</em> in less than an hour. Thanks to git and
+Nix I was able to do it without even having to know where to look on my own.</p>
+<p>Can your configuration system do that?</p>
+
+        </div>
+
+        
+        <div class="pagination">
+            <div class="pagination__title">
+                <span class="pagination__title-h"></span>
+                <hr />
+            </div>
+            <div class="pagination__buttons">
+                    <span class="button previous">
+                        <a href="https://ipetkov.dev/blog/steam-deck-first-impressions/">
+                            <span class="button__icon">←</span>&nbsp;
+                            <span class="button__text">Steam Deck First Impressions</span>
+                        </a>
+                    </span>
+                
+                
+                    <span class="button next">
+                        <a href="https://ipetkov.dev/blog/happy-birthday-crane/">
+                            <span class="button__text">Happy birthday Crane!</span>&nbsp;
+                            <span class="button__icon">→</span>
+                        </a>
+                    </span>
+                </div>
+        </div>
+    
+    </div>
+
+    </div>
+
+    
+  <footer class="footer">
+    <div class="footer__inner">
+      <div class="copyright">
+        <span>© 
+    2023
+ Ivan Petkov</span>
+
+        <span class="copyright-theme">
+          <span class="copyright-theme-sep">:: </span>
+          Theme based on <a href="https://github.com/pawroman/zola-theme-terminimal/">Terminimal</a> by pawroman
+        </span>
+      </div>
+    </div>
+  </footer>
+
+
+</div>
+</body>
+
+</html>

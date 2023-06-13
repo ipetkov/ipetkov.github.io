@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <title>Transparently Exposing Services Over Tailscale and the LAN | Ivan Petkov</title>
+    
+    <meta http-equiv="content-type" content="text/html; charset=utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1">
+    <meta name="robots" content="noodp"/>
+
+    <link rel="stylesheet" href="https://ipetkov.dev/style.css">
+    <link rel="stylesheet" href="https://ipetkov.dev/color/green.css">
+
+        <link rel="stylesheet" href="https://ipetkov.dev/color/background_blue.css">
+    
+    <link rel="stylesheet" href="https://ipetkov.dev/font-hack-subset.css">
+
+        <link rel="alternate" type="application/rss+xml" title="RSS" href="https://ipetkov.dev/rss.xml">
+    <meta property="og:title" content="Transparently Exposing Services Over Tailscale and the LAN">
+<meta property="og:site_name" content="ipetkov.dev">
+<meta property="og:image" content="https://ipetkov.dev/favicon.png">
+<meta property="og:image:type" content="image/png">
+<meta property="og:image:alt" content="ipetkov.dev favicon">
+<meta property="og:url" content="https://ipetkov.dev/blog/transparently-exposing-services-over-tailscale-and-the-lan/">
+<meta property="og:description" content="">
+<meta property="og:type" content="article">
+<link rel="icon" type="image/png" href="https://ipetkov.dev/favicon.png">
+<link rel="stylesheet" href="https://ipetkov.dev/overrides.css">
+<link rel="me" href="https://hachyderm.io/@ivan">
+<link rel="alternate" type="application/atom+xml" title="Ivan Petkov" href="https://ipetkov.dev/atom.xml"></head>
+
+<body class="">
+<div class="container">
+    
+    <header class="header">
+        <div class="header__inner">
+            <div class="header__logo">
+                    
+                <a href="https://ipetkov.dev" style="text-decoration: none;">
+                    <div class="logo">
+                      ipetkov.dev
+                    </div>
+                </a>
+            </div>
+        </div>
+
+        
+        <nav class="menu">
+            <ul class="menu__inner">
+                <li><a href="https://ipetkov.dev">home</a></li>
+            
+                <li><a href="https://ipetkov.dev/about">about</a></li>
+            
+                <li class="active"><a href="https://ipetkov.dev/blog">blog</a></li>
+            
+                <li><a href="https://ipetkov.dev/tags">tags</a></li>
+            </ul>
+        </nav>
+    
+    
+        
+    </header>
+    
+
+    <div class="content">
+        
+    <div class="post">
+        
+    <h1 class="post-title"><a href="https://ipetkov.dev/blog/transparently-exposing-services-over-tailscale-and-the-lan/">Transparently Exposing Services Over Tailscale and the LAN</a></h1>
+    <div class="post-meta-inline">
+        
+    <span class="post-date">
+            2023-02-07
+        </span>
+
+    </div>
+
+    
+        <span class="post-tags-inline">
+                :: tags:&nbsp;
+                <a class="post-tag" href="https://ipetkov.dev/tags/dns/">#dns</a>&nbsp;
+                <a class="post-tag" href="https://ipetkov.dev/tags/pihole/">#pihole</a>&nbsp;
+                <a class="post-tag" href="https://ipetkov.dev/tags/tailscale/">#tailscale</a></span>
+    
+
+        
+        <div class="post-content">
+            <p>Suppose we have control of our own domain and a set of services we want to share
+with (only) our friends and family. Here's how we can make them accessible over
+both Tailscale or when connected to the same physical network while using the
+<em>exact same domain</em> in each case.</p>
+<span id="continue-reading"></span>
+<blockquote>
+<p>I personally <em>love</em> Tailscale and it truly makes securely connecting devices
+incredibly easy. That said, it's not always <em>practical</em> to expect all friends
+and family to have Tailscale set up and always connected, so there's
+definitely a value to being able to access services on the local network
+directly.</p>
+</blockquote>
+<h1 id="prerequisites">Prerequisites</h1>
+<p>Things we'll need and their example values. Remember to substitute these with your
+own!</p>
+<ol>
+<li>A domain we control: <code>example.com</code></li>
+<li>A subdomain we would like to use for the service: <code>rainbows.example.com</code></li>
+<li>A tailnet name: <code>cat-crocodile.ts.net</code></li>
+<li>A host (on the local network) running the <code>rainbows</code> service
+<ul>
+<li>A machine name assigned to this host in Tailscale: <code>fido</code> (meaning the
+host can be reached via <code>fido.cat-crocodile.ts.net</code> over Tailscale)</li>
+<li>A stable local IP address for <code>fido</code>: likely something like <code>192.168.0.42</code></li>
+</ul>
+</li>
+<li>A(n always reachable) host to run a DNS server: <code>dennis</code>
+<ul>
+<li>A stable local IP address for <code>dennis</code>: likely something like <code>192.168.0.42</code></li>
+<li>The local network's DHCP server (i.e. your router) should assign this
+IP as the primary DNS server for the rest of the local network</li>
+</ul>
+</li>
+<li>MagicDNS enabled on the tailnet</li>
+<li>The appropriate Tailscale ACLs such that <code>dennis</code>' port 53 is accessible
+(and whatever other ports the <code>rainbows</code> service will use on <code>fido</code>, e.g. 443
+for HTTPS)</li>
+<li>A &quot;base&quot; DNS server:
+<ul>
+<li>This can be a <a rel="nofollow noreferrer" href="https://pi-hole.net/">Pi-hole</a>, though if it is going to be
+running on <code>dennis</code> you will need to configure it to listen to <em>any port
+besides 53</em> (the default DNS port).</li>
+<li>Or this can be any public DNS provider like <code>9.9.9.9</code></li>
+</ul>
+</li>
+</ol>
+<h1 id="the-approach">The Approach</h1>
+<p>First we need to create a CNAME record pointing <code>rainbows.example.com</code> to
+<code>fido.cat-crocodile.ts.net</code>; this should be done on the nameserver for
+<code>example.com</code>, likely your domain registrar.</p>
+<p>Next, we <em>could</em> configure our local DNS server (i.e. our Pi-hole instance
+running on <code>dennis</code>) to hard-code an address record pointing
+<code>fido.cat-crocodile.ts.net</code> to <code>192.168.0.42</code> <em>except this will not work</em> if
+<code>dennis</code> is set as the global nameserver for your tailnet: if you ever leave the
+local network <code>dennis</code> will recursively resolve <code>rainbows.example.net</code> to the
+&quot;wrong&quot; address.</p>
+<p>Instead <code>dennis</code> needs to run a recursive DNS server <em>which can tailor results
+based on the requester's address</em>. Namely, if a request comes from a local
+address for <code>rainbows.example.com</code> or <code>fido.cat-crocodile.ts.net</code> it would need
+to respond with <code>192.168.0.42</code> directly; otherwise it should use MagicDNS to
+resolve to the Tailscale IP.</p>
+<p>BIND's <code>named</code> fulfills our use-case perfectly: it can present different <em>views</em>
+of DNS records based on the requester's address (among other things).</p>
+<h1 id="configuration">Configuration</h1>
+<p>Below is the minimal configuration necessary to get things working with <code>named</code>.
+Remember to change the placeholder values with your own, but otherwise feel free
+to tailor it further to your needs:</p>
+<pre style="background-color:#0f1419;color:#bfbab0;"><code><span>acl tailnet { 100.64.0.0/10; };
+</span><span>acl mynet {
+</span><span>  localnets; # bind builtin, automatically represents all interfaces on the device
+</span><span>  tailnet; # also include tailscale&#39;s range (which is the Carrier Grade NAT range)
+</span><span>};
+</span><span>
+</span><span>options {
+</span><span>  directory &quot;/run/named&quot;;
+</span><span>  querylog no; # Change to `yes` to debug queries
+</span><span>
+</span><span>  listen-on { any; };
+</span><span>  listen-on-v6 { any; };
+</span><span>
+</span><span>  # Keep this set to `only` if using Pi-hole. Setting it to `first`
+</span><span>  # will result in `named` trying to resolve results on its own which
+</span><span>  # would defeat Pi-hole&#39;s filtering
+</span><span>  forward only;
+</span><span>
+</span><span>  # Assuming there is a Pi-hole instance running on this host on port 9053,
+</span><span>  # forward requests for any zones not configured here. If you aren&#39;t using
+</span><span>  # Pi-hole this can be replaced with any other public DNS (e.g. `9.9.9.9`).
+</span><span>  forwarders { 127.0.0.1 port 9053; };
+</span><span>
+</span><span>  # Allow recursive resolution for any LAN/Tailscale queries
+</span><span>  recursion yes;
+</span><span>  allow-query { mynet; };
+</span><span>  allow-recursion { mynet; };
+</span><span>  allow-query-cache { mynet; };
+</span><span>};
+</span><span>
+</span><span># NB: view order is significant here: views are considered one by one and only
+</span><span># the first one to match is used. Specifically, the `catchall` view will
+</span><span># effectively be used for non-tailnet clients as they would have otherwise been
+</span><span># matched by the `tsnet` view
+</span><span>view tsnet {
+</span><span>  match-clients { tailnet; };
+</span><span>
+</span><span>  # We forward any queries for our tailnet directly to the MagicDNS server
+</span><span>  # since it should have the results for any hosts on the tailnet (which the
+</span><span>  # upstream DNS likely won&#39;t).
+</span><span>  # NB: be _very_ careful that the tailnet name does not change here
+</span><span>  # and also be careful to ensure that this host was initialized with
+</span><span>  # `tailscale up --accept-dns=false` otherwise we could end up recursively
+</span><span>  # ourselves if the MagicDNS forwards any non-tailnet queries back to us
+</span><span>  zone &quot;cat-crocodile.ts.net&quot; IN {
+</span><span>    type forward;
+</span><span>    forward only;
+</span><span>    forwarders { 100.100.100.100; }; # Tailscale&#39;s MagicDNS IP
+</span><span>  };
+</span><span>};
+</span><span>
+</span><span># The &quot;catchall&quot; view which will match all clients. Remember
+</span><span># that the earlier view will filter out any tailnet clients
+</span><span># maning this view represents clients directly on the local network
+</span><span>view catchall {
+</span><span>  match-clients { any; };
+</span><span>
+</span><span>  zone &quot;cat-crocodile.ts.net&quot; IN {
+</span><span>    type primary;
+</span><span>    file &quot;/path/to/file/for/lan/zone/cat-crocodile.ts.net&quot;;
+</span><span>  };
+</span><span>};
+</span></code></pre>
+<p>Where the contents of <code>/path/to/file/for/lan/zone/cat-crocodile.ts.net</code> are:</p>
+<pre style="background-color:#0f1419;color:#bfbab0;"><code><span>$TTL 2d
+</span><span>$ORIGIN cat-crocodile.ts.net.
+</span><span>@ IN SOA dns.example.com. hostmaster.example.com. (
+</span><span>                                1          ; serial number
+</span><span>                                12h        ; refresh
+</span><span>                                15m        ; update retry
+</span><span>                                3w         ; expiry
+</span><span>                                2h         ; minimum
+</span><span>                                )
+</span><span>@ IN NS  dns.example.com.
+</span><span>@ IN A   192.168.0.42
+</span></code></pre>
+
+        </div>
+
+        
+        <div class="pagination">
+            <div class="pagination__title">
+                <span class="pagination__title-h"></span>
+                <hr />
+            </div>
+            <div class="pagination__buttons">
+                    <span class="button previous">
+                        <a href="https://ipetkov.dev/blog/happy-birthday-crane/">
+                            <span class="button__icon">←</span>&nbsp;
+                            <span class="button__text">Happy birthday Crane!</span>
+                        </a>
+                    </span>
+                
+                
+                    <span class="button next">
+                        <a href="https://ipetkov.dev/blog/nixos-on-the-pibox/">
+                            <span class="button__text">NixOS on the PiBox</span>&nbsp;
+                            <span class="button__icon">→</span>
+                        </a>
+                    </span>
+                </div>
+        </div>
+    
+    </div>
+
+    </div>
+
+    
+  <footer class="footer">
+    <div class="footer__inner">
+      <div class="copyright">
+        <span>© 
+    2023
+ Ivan Petkov</span>
+
+        <span class="copyright-theme">
+          <span class="copyright-theme-sep">:: </span>
+          Theme based on <a href="https://github.com/pawroman/zola-theme-terminimal/">Terminimal</a> by pawroman
+        </span>
+      </div>
+    </div>
+  </footer>
+
+
+</div>
+</body>
+
+</html>
