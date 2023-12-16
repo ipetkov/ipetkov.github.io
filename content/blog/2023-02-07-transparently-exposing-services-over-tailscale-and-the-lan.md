@@ -2,6 +2,7 @@
 title = "Transparently Exposing Services Over Tailscale and the LAN"
 description = ""
 date = 2023-02-07
+updated = 2023-12-16
 
 [taxonomies]
 tags = ["dns", "pihole", "tailscale"]
@@ -72,7 +73,7 @@ Below is the minimal configuration necessary to get things working with `named`.
 Remember to change the placeholder values with your own, but otherwise feel free
 to tailor it further to your needs:
 
-```
+```nix
 acl tailnet { 100.64.0.0/10; };
 acl mynet {
   localnets; # bind builtin, automatically represents all interfaces on the device
