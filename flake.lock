@@ -19,24 +19,7 @@
     "root": {
       "inputs": {
         "nixpkgs": "nixpkgs",
-        "terminimal": "terminimal",
         "utils": "utils"
-      }
-    },
-    "terminimal": {
-      "flake": false,
-      "locked": {
-        "lastModified": 1674908149,
-        "narHash": "sha256-7qN5a//BjTn4OhrkgziWCP8w7GOKZJSVcg9Qz0Ua150=",
-        "owner": "pawroman",
-        "repo": "zola-theme-terminimal",
-        "rev": "0ec1aed81acf7ea47e457b9289c1974186c3eb3d",
-        "type": "github"
-      },
-      "original": {
-        "owner": "pawroman",
-        "repo": "zola-theme-terminimal",
-        "type": "github"
       }
     },
     "utils": {

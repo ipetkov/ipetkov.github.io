@@ -1,5 +1,4 @@
 { stdenv
-, terminimal
 , zola
 }:
 
@@ -11,16 +10,7 @@ stdenv.mkDerivation {
 
   buildInputs = [ zola ];
 
-  configurePhase = ''
-    mkdir -p themes
-    ln -sn ${terminimal} themes/terminimal
-  '';
-
   buildPhase = ''
-    zola build
-  '';
-
-  installPhase = ''
-    mv public $out
+    zola build -o $out
   '';
 }

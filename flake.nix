@@ -3,14 +3,10 @@
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
-    terminimal = {
-      url = "github:pawroman/zola-theme-terminimal";
-      flake = false;
-    };
     utils.url = "github:numtide/flake-utils";
   };
 
-  outputs = { self, nixpkgs, terminimal, utils, ... }:
+  outputs = { self, nixpkgs, utils, ... }:
     let
       supportedSystems = [
         "x86_64-linux"
@@ -23,9 +19,7 @@
         };
 
         myPkgs = {
-          blog = pkgs.callPackage ./blog.nix {
-            inherit terminimal;
-          };
+          blog = pkgs.callPackage ./blog.nix { };
         };
       in
       {
@@ -40,29 +34,6 @@
             graphviz
             nixpkgs-fmt
           ];
-
-          # Link themes managed by Nix rather than having to go with git submodules manually
-          shellHook = ''
-            THEMES_PATH="$(${pkgs.git}/bin/git rev-parse --show-toplevel)/themes"
-            TERMINIMAL_PATH="$THEMES_PATH/terminimal"
-
-            function makeThemeLink() {
-              mkdir -p "$THEMES_PATH"
-              ln -sfn "${terminimal}" "$TERMINIMAL_PATH"
-            }
-
-            if [[ ! -e "$TERMINIMAL_PATH" ]]; then
-                makeThemeLink
-            elif [[ -L "$TERMINIMAL_PATH" ]]; then
-              if [[ ! "$TERMINIMAL_PATH" -ef "${terminimal}" ]]; then
-                echo "warning: unlinking stale theme and replacing with flake input"
-                unlink "$TERMINIMAL_PATH"
-                makeThemeLink
-              fi
-            else
-              echo "warning: unsure how to link theme, consider clearing $TERMINIMAL_PATH"
-            fi
-          '';
         };
       });
 }
