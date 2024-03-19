@@ -2,7 +2,7 @@
 title = "Installing NixOS and ZFS on my Desktop"
 description = "A walk through how I went about installing NixOS on my desktop."
 date = 2021-01-24
-updated = 2021-12-13
+updated = 2024-03-19
 
 [taxonomies]
 tags = ["NixOS", "zfs"]
@@ -379,6 +379,7 @@ should be run as root.
 
    ```
    zfs create -o compression=on -o mountpoint=legacy "${POOL}/local"
+   zfs create -o compression=on -o mountpoint=legacy "${POOL}/local/nix"
    zfs create -o compression=on -o mountpoint=legacy "${POOL}/system"
    zfs create -o compression=on -o mountpoint=legacy "${POOL}/user"
    zfs create -o compression=on -o mountpoint=legacy "${POOL}/reserved"
