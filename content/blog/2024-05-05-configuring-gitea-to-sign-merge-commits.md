@@ -1,10 +1,11 @@
 +++
-title = "Configuring Gitea to Sign Merge Commits"
+title = "Configuring Gitea/Forgejo to Sign Merge Commits"
 description = "How to configure Gitea to sign merge commits with GPG"
 date = 2024-05-05
+updated = 2024-08-19
 
 [taxonomies]
-tags = [ "gitea", "gpg", "self-hosting" ]
+tags = [ "forgejo", "gitea", "gpg", "self-hosting" ]
 +++
 
 Gitea supports [automatically signing commits] it generates (such as when
@@ -18,6 +19,9 @@ preferable to give no advice than it is to give _bad_ advice.
 
 A position that I, as an internet rando, am absolutely not bound by, so here's
 what I did!
+
+_Edit 2024-08-19: these exact steps also work for Forejo! Just use
+`/var/lib/forgejo` instead of `/var/lib/gitea` for all instructions below_
 
 <!-- more -->
 
@@ -239,7 +243,7 @@ There is NO WARRANTY, to the extent permitted by law.
 
 Secret subkeys are available.
 
-gpg: /home/ivan/.gnupg/trustdb.gpg: trustdb created
+gpg: /var/lib/gitea/data/home/.gnupg/trustdb.gpg: trustdb created
 pub  ed25519/A1596EF2CE56B350
      created: 2024-05-05  expires: never       usage: SC
      trust: unknown       validity: unknown
