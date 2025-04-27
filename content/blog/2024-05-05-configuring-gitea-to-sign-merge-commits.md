@@ -2,7 +2,7 @@
 title = "Configuring Gitea/Forgejo to Sign Merge Commits"
 description = "How to configure Gitea to sign merge commits with GPG"
 date = 2024-05-05
-updated = 2024-08-19
+updated = 2025-04-26
 
 [taxonomies]
 tags = [ "forgejo", "gitea", "gpg", "self-hosting" ]
@@ -20,7 +20,7 @@ preferable to give no advice than it is to give _bad_ advice.
 A position that I, as an internet rando, am absolutely not bound by, so here's
 what I did!
 
-_Edit 2024-08-19: these exact steps also work for Forejo! Just use
+_Edit 2024-08-19: these exact steps also work for Forgejo! Just use
 `/var/lib/forgejo` instead of `/var/lib/gitea` for all instructions below_
 
 <!-- more -->
