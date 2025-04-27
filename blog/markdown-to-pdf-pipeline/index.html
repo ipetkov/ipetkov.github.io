@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <title>The Markdown to PDF pipeline I wish someone told me about | Ivan Petkov</title>
+    
+    <meta http-equiv="content-type" content="text/html; charset=utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1">
+    <meta name="robots" content="noodp"/>
+
+    <link rel="stylesheet" href="https://ipetkov.dev/style.css">
+    <link rel="stylesheet" href="https://ipetkov.dev/color/green.css">
+
+        <link rel="stylesheet" href="https://ipetkov.dev/color/background_blue.css">
+    
+    <link rel="stylesheet" href="https://ipetkov.dev/font-hack-subset.css">
+
+        <link rel="alternate" type="application/rss+xml" title="RSS" href="https://ipetkov.dev/rss.xml">
+    <meta property="og:title" content="The Markdown to PDF pipeline I wish someone told me about">
+<meta property="og:site_name" content="ipetkov.dev">
+<meta property="og:image" content="https://ipetkov.dev/favicon.png">
+<meta property="og:image:type" content="image/png">
+<meta property="og:image:alt" content="ipetkov.dev favicon">
+<meta property="og:url" content="https://ipetkov.dev/blog/markdown-to-pdf-pipeline/">
+<meta property="og:description" content="">
+<meta property="og:type" content="article">
+<link rel="icon" type="image/png" href="https://ipetkov.dev/favicon.png">
+<link rel="stylesheet" href="https://ipetkov.dev/overrides.css">
+<link rel="me" href="https://hachyderm.io/@ivan">
+<link rel="alternate" type="application/atom+xml" title="Ivan Petkov" href="https://ipetkov.dev/atom.xml"></head>
+
+<body class="">
+<div class="container">
+    
+    <header class="header">
+        <div class="header__inner">
+            <div class="header__logo">
+                    
+                <a href="https://ipetkov.dev" style="text-decoration: none;">
+                    <div class="logo">
+                      ipetkov.dev
+                    </div>
+                </a>
+            </div>
+        </div>
+
+        
+        <nav class="menu">
+            <ul class="menu__inner">
+                <li><a href="https://ipetkov.dev">home</a></li>
+            
+                <li><a href="https://ipetkov.dev/about">about</a></li>
+            
+                <li class="active"><a href="https://ipetkov.dev/blog">blog</a></li>
+            
+                <li><a href="https://ipetkov.dev/tags">tags</a></li>
+            </ul>
+        </nav>
+    
+    
+        
+    </header>
+    
+
+    <div class="content">
+        
+    <div class="post">
+        
+    <h1 class="post-title"><a href="https://ipetkov.dev/blog/markdown-to-pdf-pipeline/">The Markdown to PDF pipeline I wish someone told me about</a></h1>
+    <div class="post-meta-inline">
+        
+    <span class="post-date">
+            2025-04-26
+        </span>
+
+    </div>
+
+    
+        <span class="post-tags-inline">
+                :: tags:&nbsp;
+                <a class="post-tag" href="https://ipetkov.dev/tags/markdown/">#markdown</a>&nbsp;
+                <a class="post-tag" href="https://ipetkov.dev/tags/pandoc/">#pandoc</a>&nbsp;
+                <a class="post-tag" href="https://ipetkov.dev/tags/typst/">#typst</a></span>
+    
+
+        
+        <div class="post-content">
+            <p>I recently found myself in a situation where I needed to write up a document
+intended to be updated once or twice per year and otherwise kept printed out as
+a hard copy in a safe location. The only requirement I have is that I want to be
+able to write in Markdown (I write a lot of Markdown and find it to be minimal
+enough fuss that I can focus on getting content on to a page) and be able to
+render to something that can easily be printed out (like PDF!).</p>
+<p>Although there are resources online on doing this, I had to read through and
+cobble together information from various places, so hopefully this ends up being
+a nicer quick start for someone else!</p>
+<span id="continue-reading"></span>
+<p>In the end I settled on the moral equivalent (not to scale) of<br>
+<code>cat *.md | pandoc | typst &gt;out.pdf</code>, modulo some minor configuration which is
+easy to set and forget once it fits your liking.</p>
+<p><a rel="nofollow noreferrer" href="https://pandoc.org/">Pandoc</a> is basically a Swiss Army knife for converting between different
+markup formats, and <a rel="nofollow noreferrer" href="https://typst.app/docs/">Typst</a> is a modern typesetting system (in the same vein as
+LaTeX but way easier to use and get running). Thus, Typst knows how to take some
+layout markup and some content and spit out a PDF, while Pandoc knows how to
+convert Markdown to whatever inputs Typst is used to parsing.</p>
+<p>The final missing piece is giving Pandoc a little bit of metadata and a template
+file which will set up the Typst preamble and default styling. Pandoc has <em>a
+lot</em> of flags and functionality it supports and I got lost in the docs for a
+while trying to make sense of how to inject my own styles as overrides into
+Pandoc's default Typst template, so I gave up and adapted a template I found
+online and made it my own (which in hindsight ended up being way simpler).</p>
+<p>Save the following (and tweak it to your liking) under <code>metadata.yaml</code>:</p>
+<pre data-lang="yaml" style="background-color:#0f1419;color:#bfbab0;" class="language-yaml "><code class="language-yaml" data-lang="yaml"><span style="color:#59c2ff;">title</span><span style="color:#bfbab0cc;">: </span><span style="color:#c2d94c;">Hello world!
+</span><span style="color:#59c2ff;">subtitle</span><span style="color:#bfbab0cc;">: </span><span style="color:#c2d94c;">A simple Markdown to PDF pipeline
+</span></code></pre>
+<p>Then save the following (and tweak it to your liking) under <code>my.template</code>:</p>
+<pre data-lang="perl" style="background-color:#0f1419;color:#bfbab0;" class="language-perl "><code class="language-perl" data-lang="perl"><span style="color:#f29668;">// </span><span style="color:#ffb454;">Loosely based on
+</span><span style="color:#f29668;">// </span><span style="color:#59c2ff;">https</span><span style="color:#bfbab0cc;">:</span><span>//</span><span style="color:#f29718;">web</span><span style="color:#f29668;">.</span><span style="color:#f29718;">archive</span><span style="color:#f29668;">.</span><span style="color:#ffb454;">org</span><span>/</span><span style="color:#95e6cb;">web</span><span>/</span><span style="color:#f29718;">20250427030050</span><span style="color:#f29668;">/</span><span style="color:#59c2ff;">https</span><span style="color:#bfbab0cc;">:</span><span>//</span><span style="color:#f29718;">imaginarytext</span><span style="color:#f29668;">.</span><span style="color:#ffb454;">ca</span><span>/</span><span style="color:#95e6cb;">posts</span><span>/</span><span style="color:#f29718;">2024</span><span style="color:#f29668;">/</span><span style="color:#f29718;">pandoc</span><span style="color:#f29668;">-</span><span style="color:#f29718;">typst</span><span style="color:#f29668;">-</span><span style="color:#ffb454;">tutorial</span><span>/
+</span><span style="color:#95e6cb;">#let conf</span><span style="color:#ff7733;">(
+</span><span style="color:#95e6cb;">  title: none,
+</span><span style="color:#95e6cb;">  subtitle: none,
+</span><span style="color:#95e6cb;">  date: datetime</span><span style="color:#ff7733;">.</span><span style="color:#95e6cb;">today</span><span style="color:#ff7733;">().</span><span style="color:#95e6cb;">display</span><span style="color:#ff7733;">()</span><span style="color:#95e6cb;">,
+</span><span style="color:#95e6cb;">  lang: &quot;en&quot;,
+</span><span style="color:#95e6cb;">  paper: &quot;a4&quot;,
+</span><span style="color:#95e6cb;">  body,
+</span><span style="color:#ff7733;">) </span><span style="color:#95e6cb;">= {
+</span><span style="color:#95e6cb;">  set page</span><span style="color:#ff7733;">(
+</span><span style="color:#95e6cb;">    paper: paper,
+</span><span style="color:#95e6cb;">
+</span><span style="color:#95e6cb;">    footer: context </span><span style="color:#ff7733;">[
+</span><span style="color:#95e6cb;">      #set text(style: &quot;italic&quot;)
+</span><span style="color:#95e6cb;">      Last updated: #date #h(1fr) #counter(page).display(&quot;1 of 1&quot;, both: true)
+</span><span style="color:#95e6cb;">    </span><span style="color:#ff7733;">]</span><span style="color:#95e6cb;">,
+</span><span style="color:#95e6cb;">  </span><span style="color:#ff7733;">)
+</span><span style="color:#95e6cb;">
+</span><span style="color:#95e6cb;">  </span><span>// </span><span style="color:#95e6cb;">BASIC BODY PARAGRAPH FORMATTING
+</span><span style="color:#95e6cb;">  set par</span><span style="color:#ff7733;">(
+</span><span style="color:#95e6cb;">    first-line-indent: 0em,
+</span><span style="color:#95e6cb;">    justify: true,
+</span><span style="color:#95e6cb;">  </span><span style="color:#ff7733;">)
+</span><span style="color:#95e6cb;">  set text</span><span style="color:#ff7733;">(
+</span><span style="color:#95e6cb;">    lang: lang,
+</span><span style="color:#95e6cb;">    alternates: false,
+</span><span style="color:#95e6cb;">  </span><span style="color:#ff7733;">)
+</span><span style="color:#95e6cb;">
+</span><span style="color:#95e6cb;">  </span><span>// </span><span style="color:#95e6cb;">Block quotations
+</span><span style="color:#95e6cb;">  set quote</span><span style="color:#ff7733;">(</span><span style="color:#95e6cb;">block: true</span><span style="color:#ff7733;">)
+</span><span style="color:#95e6cb;">  show quote: set pad</span><span style="color:#ff7733;">(</span><span style="color:#95e6cb;">x: 2em</span><span style="color:#ff7733;">) </span><span>// </span><span style="color:#95e6cb;">L&amp;R margins
+</span><span style="color:#95e6cb;">  show quote: set text</span><span style="color:#ff7733;">(</span><span style="color:#95e6cb;">style: &quot;italic&quot;</span><span style="color:#ff7733;">)
+</span><span style="color:#95e6cb;">
+</span><span style="color:#95e6cb;">  </span><span>// </span><span style="color:#95e6cb;">HEADINGS
+</span><span style="color:#95e6cb;">  show heading: it =&gt; {
+</span><span style="color:#95e6cb;">    if it</span><span style="color:#ff7733;">.</span><span style="color:#95e6cb;">depth == 1 {
+</span><span style="color:#95e6cb;">      pagebreak</span><span style="color:#ff7733;">(</span><span style="color:#95e6cb;">weak: true</span><span style="color:#ff7733;">)
+</span><span style="color:#95e6cb;">    }
+</span><span style="color:#95e6cb;">    set text</span><span style="color:#ff7733;">(</span><span style="color:#95e6cb;">hyphenate: true</span><span style="color:#ff7733;">)
+</span><span style="color:#95e6cb;">    it
+</span><span style="color:#95e6cb;">  }
+</span><span style="color:#95e6cb;">
+</span><span style="color:#95e6cb;">  </span><span>// </span><span style="color:#95e6cb;">Title page and TOC
+</span><span style="color:#95e6cb;">  align</span><span style="color:#ff7733;">(</span><span style="color:#95e6cb;">horizon </span><span style="color:#f29668;">+ </span><span style="color:#95e6cb;">center, </span><span style="color:#ff7733;">[
+</span><span style="color:#95e6cb;">    #text(size: 2.5em)</span><span style="color:#ff7733;">[</span><span style="color:#95e6cb;">#title</span><span style="color:#ff7733;">]
+</span><span style="color:#95e6cb;">
+</span><span style="color:#95e6cb;">    #text(size: 1em, style: &quot;italic&quot;)</span><span style="color:#ff7733;">[</span><span style="color:#95e6cb;">#subtitle</span><span style="color:#ff7733;">]
+</span><span style="color:#95e6cb;">    #v(25%)
+</span><span style="color:#95e6cb;">  </span><span style="color:#ff7733;">])
+</span><span style="color:#95e6cb;">  pagebreak</span><span style="color:#ff7733;">()
+</span><span style="color:#95e6cb;">  set heading</span><span style="color:#ff7733;">(</span><span style="color:#95e6cb;">numbering: &quot;1</span><span style="color:#ff7733;">.</span><span style="color:#95e6cb;">&quot;</span><span style="color:#ff7733;">)
+</span><span style="color:#95e6cb;">  outline</span><span style="color:#ff7733;">(
+</span><span style="color:#95e6cb;">    title: auto,
+</span><span style="color:#95e6cb;">    indent: auto,
+</span><span style="color:#95e6cb;">  </span><span style="color:#ff7733;">)</span><span style="color:#95e6cb;">;
+</span><span style="color:#95e6cb;">  pagebreak</span><span style="color:#ff7733;">()
+</span><span style="color:#95e6cb;">
+</span><span style="color:#95e6cb;">  </span><span>// </span><span style="color:#95e6cb;">THIS IS THE ACTUAL BODY:
+</span><span style="color:#95e6cb;">  body
+</span><span style="color:#95e6cb;">}
+</span><span style="color:#95e6cb;">
+</span><span>// </span><span style="color:#95e6cb;">BOILERPLATE PANDOC TEMPLATE:
+</span><span style="color:#95e6cb;">
+</span><span style="color:#95e6cb;">#show: body =&gt; conf</span><span style="color:#ff7733;">(
+</span><span style="color:#ff7733;">$</span><span style="color:#95e6cb;">if</span><span style="color:#ff7733;">(</span><span style="color:#95e6cb;">title</span><span style="color:#ff7733;">)$
+</span><span style="color:#95e6cb;">  title: </span><span style="color:#ff7733;">[</span><span style="color:#95e6cb;">$title$</span><span style="color:#ff7733;">]</span><span style="color:#95e6cb;">,
+</span><span style="color:#ff7733;">$</span><span style="color:#95e6cb;">endif</span><span style="color:#ff7733;">$
+</span><span style="color:#ff7733;">$</span><span style="color:#95e6cb;">if</span><span style="color:#ff7733;">(</span><span style="color:#95e6cb;">subtitle</span><span style="color:#ff7733;">)$
+</span><span style="color:#95e6cb;">  subtitle: </span><span style="color:#ff7733;">[</span><span style="color:#95e6cb;">$subtitle$</span><span style="color:#ff7733;">]</span><span style="color:#95e6cb;">,
+</span><span style="color:#ff7733;">$</span><span style="color:#95e6cb;">endif</span><span style="color:#ff7733;">$
+</span><span style="color:#ff7733;">$</span><span style="color:#95e6cb;">if</span><span style="color:#ff7733;">(</span><span style="color:#95e6cb;">date</span><span style="color:#ff7733;">)$
+</span><span style="color:#95e6cb;">  date: </span><span style="color:#ff7733;">[</span><span style="color:#95e6cb;">$date$</span><span style="color:#ff7733;">]</span><span style="color:#95e6cb;">,
+</span><span style="color:#ff7733;">$</span><span style="color:#95e6cb;">endif</span><span style="color:#ff7733;">$
+</span><span style="color:#ff7733;">$</span><span style="color:#95e6cb;">if</span><span style="color:#ff7733;">(</span><span style="color:#95e6cb;">lang</span><span style="color:#ff7733;">)$
+</span><span style="color:#95e6cb;">  lang: &quot;</span><span style="color:#ff7733;">$</span><span style="color:#95e6cb;">lang</span><span style="color:#ff7733;">$</span><span style="color:#95e6cb;">&quot;,
+</span><span style="color:#ff7733;">$</span><span style="color:#95e6cb;">endif</span><span style="color:#ff7733;">$
+</span><span style="color:#ff7733;">$</span><span style="color:#95e6cb;">if</span><span style="color:#ff7733;">(</span><span style="color:#95e6cb;">papersize</span><span style="color:#ff7733;">)$
+</span><span style="color:#95e6cb;">  paper: &quot;</span><span style="color:#ff7733;">$</span><span style="color:#95e6cb;">papersize</span><span style="color:#ff7733;">$</span><span style="color:#95e6cb;">&quot;,
+</span><span style="color:#ff7733;">$</span><span style="color:#95e6cb;">endif</span><span style="color:#ff7733;">$
+</span><span style="color:#95e6cb;">  body,
+</span><span style="color:#ff7733;">)
+</span><span style="color:#95e6cb;">
+</span><span style="color:#ff7733;">$</span><span style="color:#95e6cb;">body</span><span style="color:#ff7733;">$
+</span><span style="color:#95e6cb;">
+</span><span style="color:#ff7733;">$</span><span style="color:#95e6cb;">for</span><span style="color:#ff7733;">(</span><span style="color:#95e6cb;">include-after</span><span style="color:#ff7733;">)$
+</span><span style="color:#95e6cb;">
+</span><span style="color:#ff7733;">$</span><span style="color:#95e6cb;">include-after</span><span style="color:#ff7733;">$
+</span><span style="color:#ff7733;">$</span><span style="color:#95e6cb;">endfor</span><span style="color:#ff7733;">$
+</span></code></pre>
+<p>Lastly invoke the whole thing via:</p>
+<pre data-lang="sh" style="background-color:#0f1419;color:#bfbab0;" class="language-sh "><code class="language-sh" data-lang="sh"><span style="color:#ffb454;">pandoc </span><span style="color:#bfbab0cc;">\
+</span><span style="color:#f29718;">  --pdf-engine</span><span style="color:#f29668;">=</span><span>typst </span><span style="color:#bfbab0cc;">\
+</span><span style="color:#f29718;">  -o</span><span> out.pdf </span><span style="color:#bfbab0cc;">\
+</span><span style="color:#f29718;">  --template</span><span style="color:#f29668;">=</span><span>my.template </span><span style="color:#bfbab0cc;">\
+</span><span style="color:#f29718;">  --metadata-file</span><span style="color:#f29668;">=</span><span>metadata.yaml </span><span style="color:#bfbab0cc;">\
+</span><span>  </span><span style="color:#f29668;">*</span><span>.md
+</span></code></pre>
+<blockquote>
+<p>As an added bonus, if you ever want to inject some one-off Typst specific
+markdown but not apply it to the entire template, you can use Pandoc's
+<code>raw_attribute</code> syntax like so:</p>
+<pre style="background-color:#0f1419;color:#bfbab0;"><code><span>```{=typst}
+</span><span>#lorem(30)
+</span><span>```
+</span></code></pre>
+</blockquote>
+
+        </div>
+
+        
+        <div class="pagination">
+            <div class="pagination__title">
+                <span class="pagination__title-h"></span>
+                <hr />
+            </div>
+            <div class="pagination__buttons">
+                    <span class="button previous">
+                        <a href="https://ipetkov.dev/blog/configuring-gitea-to-sign-merge-commits/">
+                            <span class="button__icon">←</span>&nbsp;
+                            <span class="button__text">Configuring Gitea&#x2F;Forgejo to Sign Merge Commits</span>
+                        </a>
+                    </span>
+                
+                </div>
+        </div>
+    
+    </div>
+
+    </div>
+
+    
+  <footer class="footer">
+    <div class="footer__inner">
+      <div class="copyright">
+        <span>© 
+    2025
+ Ivan Petkov</span>
+
+        <span class="copyright-theme">
+          <span class="copyright-theme-sep">:: </span>
+          Theme based on <a href="https://github.com/pawroman/zola-theme-terminimal/">Terminimal</a> by pawroman
+        </span>
+      </div>
+    </div>
+  </footer>
+
+
+</div>
+</body>
+
+</html>

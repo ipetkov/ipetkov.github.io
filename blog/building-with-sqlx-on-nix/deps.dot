@@ -1,0 +1,30 @@
+strict digraph G {
+  bgcolor="#1d212c"
+  node[
+    color="lightgray"
+    fontcolor="white"
+  ];
+  edge[
+    color="lightgray"
+  ];
+
+  deps [label="mycrate-deps"];
+  lock [shape=box label="./mycrate/Cargo.lock"];
+  migrations [shape=box label="./mycrate/migrations"];
+  mycrate;
+  sqlx [label="sqlx-prepare"];
+  src [shape=box label="./mycrate"];
+
+  lock -> deps -> mycrate;
+  src -> lock [dir="back"];
+
+  migrations -> sqlx -> mycrate;
+  migrations -> src -> mycrate;
+
+  subgraph s {
+    rank="same"
+    src
+    migrations
+    lock
+  }
+}

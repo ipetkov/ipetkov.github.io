@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <title>Tips and Tricks for Nix Flakes | Ivan Petkov</title>
+    
+    <meta http-equiv="content-type" content="text/html; charset=utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1">
+    <meta name="robots" content="noodp"/>
+
+    <link rel="stylesheet" href="https://ipetkov.dev/style.css">
+    <link rel="stylesheet" href="https://ipetkov.dev/color/green.css">
+
+        <link rel="stylesheet" href="https://ipetkov.dev/color/background_blue.css">
+    
+    <link rel="stylesheet" href="https://ipetkov.dev/font-hack-subset.css">
+
+        <link rel="alternate" type="application/rss+xml" title="RSS" href="https://ipetkov.dev/rss.xml">
+    <meta property="og:title" content="Tips and Tricks for Nix Flakes">
+<meta property="og:site_name" content="ipetkov.dev">
+<meta property="og:image" content="https://ipetkov.dev/favicon.png">
+<meta property="og:image:type" content="image/png">
+<meta property="og:image:alt" content="ipetkov.dev favicon">
+<meta property="og:url" content="https://ipetkov.dev/blog/tips-and-tricks-for-nix-flakes/">
+<meta property="og:description" content="Tips and tricks to keep in mind when working with Nix flakes">
+<meta property="og:type" content="article">
+<link rel="icon" type="image/png" href="https://ipetkov.dev/favicon.png">
+<link rel="stylesheet" href="https://ipetkov.dev/overrides.css">
+<link rel="me" href="https://hachyderm.io/@ivan">
+<link rel="alternate" type="application/atom+xml" title="Ivan Petkov" href="https://ipetkov.dev/atom.xml"></head>
+
+<body class="">
+<div class="container">
+    
+    <header class="header">
+        <div class="header__inner">
+            <div class="header__logo">
+                    
+                <a href="https://ipetkov.dev" style="text-decoration: none;">
+                    <div class="logo">
+                      ipetkov.dev
+                    </div>
+                </a>
+            </div>
+        </div>
+
+        
+        <nav class="menu">
+            <ul class="menu__inner">
+                <li><a href="https://ipetkov.dev">home</a></li>
+            
+                <li><a href="https://ipetkov.dev/about">about</a></li>
+            
+                <li class="active"><a href="https://ipetkov.dev/blog">blog</a></li>
+            
+                <li><a href="https://ipetkov.dev/tags">tags</a></li>
+            </ul>
+        </nav>
+    
+    
+        
+    </header>
+    
+
+    <div class="content">
+        
+    <div class="post">
+        
+    <h1 class="post-title"><a href="https://ipetkov.dev/blog/tips-and-tricks-for-nix-flakes/">Tips and Tricks for Nix Flakes</a></h1>
+    <div class="post-meta-inline">
+        
+    <span class="post-date">
+            2021-12-12
+        </span>
+
+    </div>
+
+    
+        <span class="post-tags-inline">
+                :: tags:&nbsp;
+                <a class="post-tag" href="https://ipetkov.dev/tags/nixos/">#NixOS</a>&nbsp;
+                <a class="post-tag" href="https://ipetkov.dev/tags/flakes/">#flakes</a></span>
+    
+
+        
+        <div class="post-content">
+            <p>After working with Nix flakes for a while you develop a sense for how to
+interact with them in more efficient or ergonomic ways. That said, a number of
+the interactions I'm about to describe were <em>extremely non-obvious</em> to me,
+especially as someone who had never peeked at their actual implementation.</p>
+<p>This is the cheat-sheet I wish someone had shown me when I first started
+tinkering with flakes. I hope you find it useful.</p>
+<span id="continue-reading"></span><h1 id="wrangling-flake-inputs">Wrangling Flake Inputs</h1>
+<p>The flake input schema allows for:</p>
+<ol>
+<li>Having your flake pull in <em>another flake</em> as an input</li>
+<li>Having your flake pull in an input that is specified by <em>another flake</em></li>
+<li>Forcing <em>another flake</em> to use an input specified in your flake</li>
+<li>Forcing <em>another flake</em> to use an input specified by <strong>yet a different
+flake</strong></li>
+</ol>
+<p>Being aware of this functionality can be useful in ensuring that all inputs
+agree on the same common dependency: for example, using the same revision of
+<code>nixpkgs</code> can avoid having multiple versions of the same package floating in the
+output closure, each built with slightly different dependencies coming from
+different <code>nixpkgs</code> commits.</p>
+<p>Let's take a look at some examples.</p>
+<pre data-lang="nix" style="background-color:#0f1419;color:#bfbab0;" class="language-nix "><code class="language-nix" data-lang="nix"><span>{
+</span><span>  </span><span style="color:#ffb454;">inputs </span><span style="color:#f29668;">= </span><span>{
+</span><span>    </span><span style="font-style:italic;color:#5c6773;"># Case 1, pulling in some flake(s) we care about, locked to some revision
+</span><span>    </span><span style="color:#ffb454;">dotfiles</span><span>.</span><span style="color:#ffb454;">url </span><span style="color:#f29668;">= </span><span style="color:#c2d94c;">&quot;github:ipetkov/dotfiles&quot;</span><span style="color:#bfbab0cc;">;
+</span><span>    </span><span style="color:#ffb454;">mypinned-nixpkgs</span><span>.</span><span style="color:#ffb454;">url </span><span style="color:#f29668;">= </span><span style="color:#c2d94c;">&quot;github:NixOS/nixpkgs/34ad3ffe08adfca17fcb4e4a47bb5f3b113687be&quot;</span><span style="color:#bfbab0cc;">;
+</span><span>
+</span><span>    </span><span style="font-style:italic;color:#5c6773;"># Case 2, pulling in an input specified by another flake. In this case
+</span><span>    </span><span style="font-style:italic;color:#5c6773;"># we may want to treat the `dotfiles` flake as some common source-of-truth
+</span><span>    </span><span style="font-style:italic;color:#5c6773;"># and use the nixpkgs version from there
+</span><span>    </span><span style="color:#ffb454;">mynixpkgs</span><span>.</span><span style="color:#ffb454;">follows </span><span style="color:#f29668;">= </span><span style="color:#c2d94c;">&quot;dotfiles/nixpkgs&quot;</span><span style="color:#bfbab0cc;">;
+</span><span>
+</span><span>    </span><span style="font-style:italic;color:#5c6773;"># Case 3, forcing another flake to use one of our inputs
+</span><span>    </span><span style="color:#ffb454;">home-manager </span><span style="color:#f29668;">= </span><span>{
+</span><span>      </span><span style="color:#ffb454;">url </span><span style="color:#f29668;">= </span><span style="color:#c2d94c;">&quot;github:nix-community/home-manager&quot;</span><span style="color:#bfbab0cc;">;
+</span><span>      </span><span style="color:#ffb454;">inputs</span><span>.</span><span style="color:#ffb454;">nixpkgs</span><span>.</span><span style="color:#ffb454;">follows </span><span style="color:#f29668;">= </span><span style="color:#c2d94c;">&quot;mypinned-nixpkgs&quot;</span><span style="color:#bfbab0cc;">;
+</span><span>    }</span><span style="color:#bfbab0cc;">;
+</span><span>
+</span><span>    </span><span style="font-style:italic;color:#5c6773;"># Case 4, forcing another falke to use a _different flake&#39;s input_ as its
+</span><span>    </span><span style="font-style:italic;color:#5c6773;"># own, but without pulling said input in our scope
+</span><span>    </span><span style="color:#ffb454;">deploy-rs </span><span style="color:#f29668;">= </span><span>{
+</span><span>      </span><span style="color:#ffb454;">url </span><span style="color:#f29668;">= </span><span style="color:#c2d94c;">&quot;github:serokell/deploy-rs&quot;</span><span style="color:#bfbab0cc;">;
+</span><span>      </span><span style="color:#ffb454;">inputs</span><span>.</span><span style="color:#ffb454;">flake-compat</span><span>.</span><span style="color:#ffb454;">follows </span><span style="color:#f29668;">= </span><span style="color:#c2d94c;">&quot;dotfiles/flake-compat&quot;</span><span style="color:#bfbab0cc;">;
+</span><span>    }</span><span style="color:#bfbab0cc;">;
+</span><span>  }</span><span style="color:#bfbab0cc;">;
+</span><span>
+</span><span>  </span><span style="color:#ffb454;">outputs </span><span style="color:#f29668;">= </span><span>{
+</span><span>    </span><span style="color:#f29718;">self</span><span style="color:#f29668;">,
+</span><span>    </span><span style="color:#f29718;">dotfiles</span><span style="color:#f29668;">,
+</span><span>    </span><span style="color:#f29718;">mypinned-nixpkgs</span><span style="color:#f29668;">,
+</span><span>    </span><span style="color:#f29718;">mynixpkgs</span><span style="color:#f29668;">,
+</span><span>    </span><span style="color:#f29718;">home-manager</span><span style="color:#f29668;">,
+</span><span>    </span><span style="color:#f29718;">deploy-rs</span><span style="color:#f29668;">,
+</span><span>    </span><span style="font-style:italic;color:#5c6773;"># NB: no ... wildcard here, these are all the inputs we have declared for
+</span><span>    </span><span style="font-style:italic;color:#5c6773;"># our flake!
+</span><span>  }: {
+</span><span>    </span><span style="font-style:italic;color:#5c6773;"># Rest of flake...
+</span><span>  }</span><span style="color:#bfbab0cc;">;
+</span><span>}
+</span></code></pre>
+<p>When in doubt, <code>nix flake info</code> will show all inputs and what revision (or
+other flake's inputs) are being tracked!</p>
+<h2 id="updating-inputs">Updating Inputs</h2>
+<ol>
+<li><code>nix flake update</code> will try to update <em>all</em> inputs where possible
+<ul>
+<li>Inputs pinned to specific revisions will, of course, remain pinned</li>
+<li>Easiest way to ensure everything stays up to date</li>
+</ul>
+</li>
+<li><code>nix flake lock --update-input $NAME</code> will only try to update the <code>$NAME</code>
+input
+<ul>
+<li>Useful for updating one particular input more frequently (e.g. via
+automation) without necessarily updating other <em>unpinned</em> inputs (like
+<code>nixpkgs</code>)</li>
+</ul>
+</li>
+<li>The common flake option <code>--override-input $INPUT $NEW</code> can be used to
+substitute a different input for the current invocation <em>without</em> updating the
+lock file
+<ul>
+<li>This could be useful for building the current flake while programmatically
+bisecting an input</li>
+</ul>
+</li>
+</ol>
+<h1 id="flake-checks">Flake Checks</h1>
+<p>The <code>nix flake check</code> command is a great way to ensure that the entire flake
+configuration is up to snuff with a single invocation. It's also a great target
+for your CI system to run so you don't have to keep reconfiguring it whenever a
+new package or system configuration is added.</p>
+<p>Other benefits include:</p>
+<ul>
+<li>All <code>nixosConfigurations</code> are evaluated (but not built) to check for any
+option/configuration collisions without needing to go through <code>nixos-rebuild dry-build --flake .</code></li>
+<li>Checks can include any arbitrary derivation. I personally like to include all
+of my package definitions as well so that they can be built with the same <code>nix flake check</code> invocation (caching will take care of this being fast).</li>
+<li>You can include extra targets in there, especially stuff like
+linters/formatters which you would want to gate CI on (but not necessarily
+prevent downstream consumers from building packages if these tests fail).</li>
+</ul>
+<h1 id="exploring-flake-contents">Exploring Flake Contents</h1>
+<p>Sometimes it can be useful to (interactively) explore what a flake holds which
+you can't easily spot via something like <code>nix flake show</code> (things like "what is
+the actual derivation for <em>X</em> check", or exploring the fully evaluated
+configurations of a NixOS configuration, etc.). This is where <code>nix repl</code> becomes
+very useful.</p>
+<p>In the same way that <code>:l &lt;nixpkgs&gt;</code> can be invoked to load a Nix expression and
+bring it into scope, <code>:lf .</code> will load a Nix flake from the current directory
+and add it to the scope. The <code>output</code> attribute will already be evaluated so
+tab-completion will work with something like
+<code>outputs.nixosConfigurations.&lt;TAB&gt;</code>.</p>
+<p>Note that the <code>:lf</code> built-in is available in Nix 2.4 or later. Flakes can also
+be loaded via <code>builtins.getFlake (toString ./.)</code> on earlier Nix versions which
+have the experimental flakes feature enabled.</p>
+<h1 id="shell-completions">Shell Completions</h1>
+<p>Check to see if you have shell completions enabled for your favorite shell, if
+they aren't already. I like to use <a rel="nofollow noreferrer" href="https://fishshell.com/">fish</a> which has really good completion
+support out of the box, especially with completions already configured for other
+packages via NixOS/home-manager configs.</p>
+<p>Completions didn't used to work a while back, but they sure do now! So next time
+you invoke a command on a flake, try out something like <code>nix build .#packages.x86_64-linux.&lt;TAB&gt;</code>.</p>
+<h1 id="general-flake-consumption">General Flake Consumption</h1>
+<p>Contrary to how it appears at first, there are only a handful of flake
+properties which are <del>magical</del> built-in and understood by Nix itself:</p>
+<ol>
+<li>Reading/managing the <code>flake.lock</code> file</li>
+<li>Pulling in input sources to the store</li>
+<li>Evaluating the <code>outputs</code> function with the inputs passed in</li>
+</ol>
+<p>Besides that, everything else behaves like any other nix expression. Sure, the
+CLI is aware of things like <code>checks</code>/<code>packages</code>/<code>devShells</code>, or it may expect
+certain formats like <code>checks</code> being derivations or <code>nixosConfigurations</code> nix
+modules, but it won't mind or stop you from defining your own attributes on the
+flake itself. It will just ignore them.</p>
+<p>For example, here's how we can define our own home-manager configuration.</p>
+<pre data-lang="nix" style="background-color:#0f1419;color:#bfbab0;" class="language-nix "><code class="language-nix" data-lang="nix"><span style="font-style:italic;color:#5c6773;"># flake.nix
+</span><span>{
+</span><span>  </span><span style="color:#ffb454;">inputs </span><span style="color:#f29668;">= </span><span>{
+</span><span>    </span><span style="color:#ffb454;">nixpkgs</span><span>.</span><span style="color:#ffb454;">url </span><span style="color:#f29668;">= </span><span style="color:#c2d94c;">&quot;nixpkgs/nixos-unstable&quot;</span><span style="color:#bfbab0cc;">;
+</span><span>
+</span><span>    </span><span style="color:#ffb454;">home-manager </span><span style="color:#f29668;">= </span><span>{
+</span><span>      </span><span style="color:#ffb454;">url </span><span style="color:#f29668;">= </span><span style="color:#c2d94c;">&quot;github:nix-community/home-manager&quot;</span><span style="color:#bfbab0cc;">;
+</span><span>      </span><span style="color:#ffb454;">inputs</span><span>.</span><span style="color:#ffb454;">nixpkgs</span><span>.</span><span style="color:#ffb454;">follows </span><span style="color:#f29668;">= </span><span style="color:#c2d94c;">&quot;nixpkgs&quot;</span><span style="color:#bfbab0cc;">;
+</span><span>    }</span><span style="color:#bfbab0cc;">;
+</span><span>  }</span><span style="color:#bfbab0cc;">;
+</span><span>
+</span><span>  </span><span style="color:#ffb454;">outputs </span><span style="color:#f29668;">= </span><span>{ </span><span style="color:#f29718;">self</span><span style="color:#f29668;">, </span><span style="color:#f29718;">home-manager </span><span>}: {
+</span><span>    </span><span style="color:#ffb454;">homeManagerConfigurations</span><span>.</span><span style="color:#ffb454;">x86_64-linux </span><span style="color:#f29668;">= </span><span>{
+</span><span>      </span><span style="color:#ffb454;">myConfig </span><span style="color:#f29668;">= </span><span style="color:#f29718;">home-manager</span><span style="color:#f29668;">.</span><span style="color:#f29718;">lib</span><span style="color:#f29668;">.</span><span style="color:#f29718;">homeManagerConfiguration </span><span>{
+</span><span>        </span><span style="color:#ffb454;">system </span><span style="color:#f29668;">= </span><span style="color:#c2d94c;">&quot;x86_64-linux&quot;</span><span style="color:#bfbab0cc;">;
+</span><span>        </span><span style="color:#ffb454;">username </span><span style="color:#f29668;">= </span><span style="color:#c2d94c;">&quot;ivan&quot;</span><span style="color:#bfbab0cc;">;
+</span><span>        </span><span style="color:#ffb454;">homeDirectory </span><span style="color:#f29668;">= </span><span style="color:#c2d94c;">&quot;/home/ivan&quot;</span><span style="color:#bfbab0cc;">;
+</span><span>        </span><span style="color:#ffb454;">stateVersion </span><span style="color:#f29668;">= </span><span style="color:#c2d94c;">&quot;21.03&quot;</span><span style="color:#bfbab0cc;">;
+</span><span>        </span><span style="color:#ffb454;">configuration </span><span style="color:#f29668;">= </span><span>{</span><span style="color:#f29668;">...</span><span>}: {
+</span><span>          </span><span style="font-style:italic;color:#5c6773;"># Some config
+</span><span>        }</span><span style="color:#bfbab0cc;">;
+</span><span>      }</span><span style="color:#bfbab0cc;">;
+</span><span>    }</span><span style="color:#bfbab0cc;">;
+</span><span>  }</span><span style="color:#bfbab0cc;">;
+</span><span>}
+</span></code></pre>
+<p>If we want to manually build (and cache) the packages associated with the
+configuration, we can invoke <code>nix build .#homeManagerConfigurations.x86_64-linux.myConfig.activationPackage</code>.</p>
+<p>If we wanted to automate building all home-manager configurations for a
+particular system in our CI, we can add the file below and configure our CI to
+execute <code>nix build -f ciHomeManagerConfigurations.nix</code>!</p>
+<pre data-lang="nix" style="background-color:#0f1419;color:#bfbab0;" class="language-nix "><code class="language-nix" data-lang="nix"><span style="font-style:italic;color:#5c6773;"># ciHomeManagerConfigurations.nix
+</span><span>{ </span><span style="color:#f29718;">system </span><span style="color:#f29668;">? </span><span style="color:#f29718;">builtins</span><span style="color:#f29668;">.</span><span style="color:#f29718;">currentSystem </span><span>}:
+</span><span>
+</span><span style="color:#ff7733;">let
+</span><span>  </span><span style="color:#ffb454;">flake </span><span style="color:#f29668;">= </span><span style="color:#f29718;">builtins</span><span style="color:#f29668;">.</span><span style="color:#f29718;">getFlake </span><span>(</span><span style="color:#f07178;">toString </span><span style="color:#c2d94c;">./.</span><span>)</span><span style="color:#bfbab0cc;">;
+</span><span>  </span><span style="color:#ff7733;">inherit </span><span>(</span><span style="color:#f29718;">flake</span><span style="color:#f29668;">.</span><span style="color:#f29718;">inputs</span><span style="color:#f29668;">.</span><span style="color:#f29718;">nixpkgs</span><span>) </span><span style="color:#ffb454;">lib</span><span style="color:#bfbab0cc;">;
+</span><span>
+</span><span>  </span><span style="color:#ffb454;">homeManagerConfigsForSystem </span><span style="color:#f29668;">= </span><span style="color:#f29718;">lib</span><span style="color:#f29668;">.</span><span style="color:#f29718;">attrByPath
+</span><span>    [</span><span style="color:#f29718;">system</span><span>]
+</span><span>    {}
+</span><span>    </span><span style="color:#f29718;">flake</span><span style="color:#f29668;">.</span><span style="color:#f29718;">homeManagerConfigurations</span><span style="color:#bfbab0cc;">;
+</span><span style="color:#ff7733;">in
+</span><span>  </span><span style="font-style:italic;color:#5c6773;"># Return all home-manager configuration derivations matching the current system
+</span><span>  </span><span style="color:#f29718;">lib</span><span style="color:#f29668;">.</span><span style="color:#f29718;">attrsets</span><span style="color:#f29668;">.</span><span style="color:#f29718;">mapAttrs
+</span><span>    (</span><span style="color:#f29718;">_</span><span>: </span><span style="color:#f29718;">hmConfig</span><span>: </span><span style="color:#f29718;">hmConfig</span><span style="color:#f29668;">.</span><span style="color:#f29718;">activationPackage</span><span>)
+</span><span>    </span><span style="color:#f29718;">homeManagerConfigsForSystem
+</span></code></pre>
+
+        </div>
+
+        
+        <div class="pagination">
+            <div class="pagination__title">
+                <span class="pagination__title-h"></span>
+                <hr />
+            </div>
+            <div class="pagination__buttons">
+                    <span class="button previous">
+                        <a href="https://ipetkov.dev/blog/building-with-sqlx-on-nix/">
+                            <span class="button__icon">←</span>&nbsp;
+                            <span class="button__text">Building with SQLx on Nix</span>
+                        </a>
+                    </span>
+                
+                
+                    <span class="button next">
+                        <a href="https://ipetkov.dev/blog/introducing-crane/">
+                            <span class="button__text">Introducing Crane: Composable and Cacheable Builds with Cargo and Nix</span>&nbsp;
+                            <span class="button__icon">→</span>
+                        </a>
+                    </span>
+                </div>
+        </div>
+    
+    </div>
+
+    </div>
+
+    
+  <footer class="footer">
+    <div class="footer__inner">
+      <div class="copyright">
+        <span>© 
+    2025
+ Ivan Petkov</span>
+
+        <span class="copyright-theme">
+          <span class="copyright-theme-sep">:: </span>
+          Theme based on <a href="https://github.com/pawroman/zola-theme-terminimal/">Terminimal</a> by pawroman
+        </span>
+      </div>
+    </div>
+  </footer>
+
+
+</div>
+</body>
+
+</html>

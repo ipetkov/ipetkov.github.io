@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <title>recent posts | Ivan Petkov</title>
+    
+    <meta http-equiv="content-type" content="text/html; charset=utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1">
+    <meta name="robots" content="noodp"/>
+
+    <link rel="stylesheet" href="https://ipetkov.dev/style.css">
+    <link rel="stylesheet" href="https://ipetkov.dev/color/green.css">
+
+        <link rel="stylesheet" href="https://ipetkov.dev/color/background_blue.css">
+    
+    <link rel="stylesheet" href="https://ipetkov.dev/font-hack-subset.css">
+
+        <link rel="alternate" type="application/rss+xml" title="RSS" href="https://ipetkov.dev/rss.xml">
+    <meta property="og:title" content="recent posts">
+<meta property="og:site_name" content="ipetkov.dev">
+<meta property="og:image" content="https://ipetkov.dev/favicon.png">
+<meta property="og:image:type" content="image/png">
+<meta property="og:image:alt" content="ipetkov.dev favicon">
+<link rel="icon" type="image/png" href="https://ipetkov.dev/favicon.png">
+<link rel="stylesheet" href="https://ipetkov.dev/overrides.css">
+<link rel="me" href="https://hachyderm.io/@ivan">
+<link rel="alternate" type="application/atom+xml" title="Ivan Petkov" href="https://ipetkov.dev/atom.xml"></head>
+
+<body class="">
+<div class="container">
+    
+    <header class="header">
+        <div class="header__inner">
+            <div class="header__logo">
+                    
+                <a href="https://ipetkov.dev" style="text-decoration: none;">
+                    <div class="logo">
+                      ipetkov.dev
+                    </div>
+                </a>
+            </div>
+        </div>
+
+        
+        
+                <nav class="menu">
+            <ul class="menu__inner">
+                <li class="active"><a href="https://ipetkov.dev">home</a></li>
+            
+                <li><a href="https://ipetkov.dev/about">about</a></li>
+            
+                <li><a href="https://ipetkov.dev/blog">blog</a></li>
+            
+                <li><a href="https://ipetkov.dev/tags">tags</a></li>
+            </ul>
+        </nav>
+    
+    
+        
+    </header>
+    
+
+    <div class="content">
+        
+    <div class="posts">
+        <div class="post on-list">
+          
+    <h1 class="post-title"><a href="https://ipetkov.dev/blog/markdown-to-pdf-pipeline/">The Markdown to PDF pipeline I wish someone told me about</a></h1>
+    <div class="post-meta-inline">
+        
+    <span class="post-date">
+            2025-04-26
+        </span>
+
+    </div>
+
+    
+        <span class="post-tags-inline">
+                :: tags:&nbsp;
+                <a class="post-tag" href="https://ipetkov.dev/tags/markdown/">#markdown</a>&nbsp;
+                <a class="post-tag" href="https://ipetkov.dev/tags/pandoc/">#pandoc</a>&nbsp;
+                <a class="post-tag" href="https://ipetkov.dev/tags/typst/">#typst</a></span>
+    
+
+          
+        <div class="post-content">
+            <p>I recently found myself in a situation where I needed to write up a document
+intended to be updated once or twice per year and otherwise kept printed out as
+a hard copy in a safe location. The only requirement I have is that I want to be
+able to write in Markdown (I write a lot of Markdown and find it to be minimal
+enough fuss that I can focus on getting content on to a page) and be able to
+render to something that can easily be printed out (like PDF!).</p>
+<p>Although there are resources online on doing this, I had to read through and
+cobble together information from various places, so hopefully this ends up being
+a nicer quick start for someone else!</p>
+        </div>
+        <div>
+            <!-- &#xFE0E; -- force text style - some devices render this as emoji -->
+            <a class="read-more button" href="https://ipetkov.dev/blog/markdown-to-pdf-pipeline/">
+                <span class="button__text">Read more</span>&nbsp;
+                <span class="button__icon">&#8617;&#xFE0E;</span>
+            </a>
+        </div>
+    
+
+        </div>
+      
+        <div class="post on-list">
+          
+    <h1 class="post-title"><a href="https://ipetkov.dev/blog/configuring-gitea-to-sign-merge-commits/">Configuring Gitea&#x2F;Forgejo to Sign Merge Commits</a></h1>
+    <div class="post-meta-inline">
+        
+    <span class="post-date">
+            2024-05-05
+        </span>
+
+    </div>
+
+    
+        <span class="post-tags-inline">
+                :: tags:&nbsp;
+                <a class="post-tag" href="https://ipetkov.dev/tags/forgejo/">#forgejo</a>&nbsp;
+                <a class="post-tag" href="https://ipetkov.dev/tags/gitea/">#gitea</a>&nbsp;
+                <a class="post-tag" href="https://ipetkov.dev/tags/gpg/">#gpg</a>&nbsp;
+                <a class="post-tag" href="https://ipetkov.dev/tags/self-hosting/">#self-hosting</a></span>
+    
+
+          
+        <div class="post-content">
+            <p>Gitea supports <a rel="nofollow noreferrer" href="https://web.archive.org/web/20240420145934/https://docs.gitea.com/administration/signing#automatic-signing">automatically signing commits</a> it generates (such as when
+merging pull requests, or editing files through the web editor). Sadly there is
+no documentation on how to actually configure this, besides vague references
+that it is left up to the server administrator to achieve.</p>
+<p>Secure key management is a topic fraught with complexity and trade off
+decisions, and the Gitea development team holds a (sensible) position that it is
+preferable to give no advice than it is to give <em>bad</em> advice.</p>
+<p>A position that I, as an internet rando, am absolutely not bound by, so here's
+what I did!</p>
+<p><em>Edit 2024-08-19: these exact steps also work for Forgejo! Just use
+<code>/var/lib/forgejo</code> instead of <code>/var/lib/gitea</code> for all instructions below</em></p>
+        </div>
+        <div>
+            <!-- &#xFE0E; -- force text style - some devices render this as emoji -->
+            <a class="read-more button" href="https://ipetkov.dev/blog/configuring-gitea-to-sign-merge-commits/">
+                <span class="button__text">Read more</span>&nbsp;
+                <span class="button__icon">&#8617;&#xFE0E;</span>
+            </a>
+        </div>
+    
+
+        </div>
+      
+        <div class="post on-list">
+          
+    <h1 class="post-title"><a href="https://ipetkov.dev/blog/open-source-is-a-gift-relicensing-is-a-grift/">Open Source is a Gift, Relicensing is a Grift</a></h1>
+    <div class="post-meta-inline">
+        
+    <span class="post-date">
+            2023-08-11
+        </span>
+
+    </div>
+
+    
+        <span class="post-tags-inline">
+                :: tags:&nbsp;
+                <a class="post-tag" href="https://ipetkov.dev/tags/open-source/">#open source</a></span>
+    
+
+          
+        <div class="post-content">
+            <p>Open Source is a Gift. But a gift that comes with strings attached is a shitty
+one.</p>
+        </div>
+        <div>
+            <!-- &#xFE0E; -- force text style - some devices render this as emoji -->
+            <a class="read-more button" href="https://ipetkov.dev/blog/open-source-is-a-gift-relicensing-is-a-grift/">
+                <span class="button__text">Read more</span>&nbsp;
+                <span class="button__icon">&#8617;&#xFE0E;</span>
+            </a>
+        </div>
+    
+
+        </div>
+      
+        <div class="post on-list">
+          
+    <h1 class="post-title"><a href="https://ipetkov.dev/blog/nixos-on-the-pibox/">NixOS on the PiBox</a></h1>
+    <div class="post-meta-inline">
+        
+    <span class="post-date">
+            2023-02-19
+        </span>
+
+    </div>
+
+    
+        <span class="post-tags-inline">
+                :: tags:&nbsp;
+                <a class="post-tag" href="https://ipetkov.dev/tags/luks/">#luks</a>&nbsp;
+                <a class="post-tag" href="https://ipetkov.dev/tags/nixos/">#NixOS</a>&nbsp;
+                <a class="post-tag" href="https://ipetkov.dev/tags/raspberrypi/">#raspberrypi</a>&nbsp;
+                <a class="post-tag" href="https://ipetkov.dev/tags/zfs/">#zfs</a></span>
+    
+
+          
+        <div class="post-content">
+            <p>The <a rel="nofollow noreferrer" href="https://web.archive.org/web/20230219020959/https://pibox.io/">PiBox</a> is a small personal server powered by a Raspberry Pi CM4. It comes
+in a nice enclosure which has a fan, an LCD screen, and has two bays for SATA
+SSDs. <a rel="nofollow noreferrer" href="https://web.archive.org/web/20230219021025/https://kubesail.com/homepage">KubeSail</a>, the company behind it, offers backup storage and proxy traffic
+as a service. They also support a bunch of templates for easily self hosting
+apps like Jellyfin or NextCloud.</p>
+<p>But, since I'm already very comfortable with NixOS and deploy a bunch of custom
+workloads with it, I wanted to try using it instead of the OS that ships with
+the PiBox.</p>
+<p>Here's how I went about it, and how you can too!</p>
+        </div>
+        <div>
+            <!-- &#xFE0E; -- force text style - some devices render this as emoji -->
+            <a class="read-more button" href="https://ipetkov.dev/blog/nixos-on-the-pibox/">
+                <span class="button__text">Read more</span>&nbsp;
+                <span class="button__icon">&#8617;&#xFE0E;</span>
+            </a>
+        </div>
+    
+
+        </div>
+      
+        <div class="post on-list">
+          
+    <h1 class="post-title"><a href="https://ipetkov.dev/blog/transparently-exposing-services-over-tailscale-and-the-lan/">Transparently Exposing Services Over Tailscale and the LAN</a></h1>
+    <div class="post-meta-inline">
+        
+    <span class="post-date">
+            2023-02-07
+        </span>
+
+    </div>
+
+    
+        <span class="post-tags-inline">
+                :: tags:&nbsp;
+                <a class="post-tag" href="https://ipetkov.dev/tags/dns/">#dns</a>&nbsp;
+                <a class="post-tag" href="https://ipetkov.dev/tags/pihole/">#pihole</a>&nbsp;
+                <a class="post-tag" href="https://ipetkov.dev/tags/tailscale/">#tailscale</a></span>
+    
+
+          
+        <div class="post-content">
+            <p>Suppose we have control of our own domain and a set of services we want to share
+with (only) our friends and family. Here's how we can make them accessible over
+both Tailscale or when connected to the same physical network while using the
+<em>exact same domain</em> in each case.</p>
+        </div>
+        <div>
+            <!-- &#xFE0E; -- force text style - some devices render this as emoji -->
+            <a class="read-more button" href="https://ipetkov.dev/blog/transparently-exposing-services-over-tailscale-and-the-lan/">
+                <span class="button__text">Read more</span>&nbsp;
+                <span class="button__icon">&#8617;&#xFE0E;</span>
+            </a>
+        </div>
+    
+
+        </div>
+      <div class="pagination">
+        <div class="pagination__buttons">
+            <span class="button more">
+              <a href="https://ipetkov.dev/blog">
+                <span class="button__text">more posts</span>
+              </a>
+            </span>
+        </div>
+      </div>
+    </div>
+
+    </div>
+
+    
+  <footer class="footer">
+    <div class="footer__inner">
+      <div class="copyright">
+        <span>© 
+    2025
+ Ivan Petkov</span>
+
+        <span class="copyright-theme">
+          <span class="copyright-theme-sep">:: </span>
+          Theme based on <a href="https://github.com/pawroman/zola-theme-terminimal/">Terminimal</a> by pawroman
+        </span>
+      </div>
+    </div>
+  </footer>
+
+
+</div>
+</body>
+
+</html>

@@ -1,0 +1,409 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <title>Configuring Gitea&#x2F;Forgejo to Sign Merge Commits | Ivan Petkov</title>
+    
+    <meta http-equiv="content-type" content="text/html; charset=utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1">
+    <meta name="robots" content="noodp"/>
+
+    <link rel="stylesheet" href="https://ipetkov.dev/style.css">
+    <link rel="stylesheet" href="https://ipetkov.dev/color/green.css">
+
+        <link rel="stylesheet" href="https://ipetkov.dev/color/background_blue.css">
+    
+    <link rel="stylesheet" href="https://ipetkov.dev/font-hack-subset.css">
+
+        <link rel="alternate" type="application/rss+xml" title="RSS" href="https://ipetkov.dev/rss.xml">
+    <meta property="og:title" content="Configuring Gitea&#x2F;Forgejo to Sign Merge Commits">
+<meta property="og:site_name" content="ipetkov.dev">
+<meta property="og:image" content="https://ipetkov.dev/favicon.png">
+<meta property="og:image:type" content="image/png">
+<meta property="og:image:alt" content="ipetkov.dev favicon">
+<meta property="og:url" content="https://ipetkov.dev/blog/configuring-gitea-to-sign-merge-commits/">
+<meta property="og:description" content="How to configure Gitea to sign merge commits with GPG">
+<meta property="og:type" content="article">
+<link rel="icon" type="image/png" href="https://ipetkov.dev/favicon.png">
+<link rel="stylesheet" href="https://ipetkov.dev/overrides.css">
+<link rel="me" href="https://hachyderm.io/@ivan">
+<link rel="alternate" type="application/atom+xml" title="Ivan Petkov" href="https://ipetkov.dev/atom.xml"></head>
+
+<body class="">
+<div class="container">
+    
+    <header class="header">
+        <div class="header__inner">
+            <div class="header__logo">
+                    
+                <a href="https://ipetkov.dev" style="text-decoration: none;">
+                    <div class="logo">
+                      ipetkov.dev
+                    </div>
+                </a>
+            </div>
+        </div>
+
+        
+        <nav class="menu">
+            <ul class="menu__inner">
+                <li><a href="https://ipetkov.dev">home</a></li>
+            
+                <li><a href="https://ipetkov.dev/about">about</a></li>
+            
+                <li class="active"><a href="https://ipetkov.dev/blog">blog</a></li>
+            
+                <li><a href="https://ipetkov.dev/tags">tags</a></li>
+            </ul>
+        </nav>
+    
+    
+        
+    </header>
+    
+
+    <div class="content">
+        
+    <div class="post">
+        
+    <h1 class="post-title"><a href="https://ipetkov.dev/blog/configuring-gitea-to-sign-merge-commits/">Configuring Gitea&#x2F;Forgejo to Sign Merge Commits</a></h1>
+    <div class="post-meta-inline">
+        
+    <span class="post-date">
+            2024-05-05
+        </span>
+
+    </div>
+
+    
+        <span class="post-tags-inline">
+                :: tags:&nbsp;
+                <a class="post-tag" href="https://ipetkov.dev/tags/forgejo/">#forgejo</a>&nbsp;
+                <a class="post-tag" href="https://ipetkov.dev/tags/gitea/">#gitea</a>&nbsp;
+                <a class="post-tag" href="https://ipetkov.dev/tags/gpg/">#gpg</a>&nbsp;
+                <a class="post-tag" href="https://ipetkov.dev/tags/self-hosting/">#self-hosting</a></span>
+    
+
+        
+        <div class="post-content">
+            <p>Gitea supports <a rel="nofollow noreferrer" href="https://web.archive.org/web/20240420145934/https://docs.gitea.com/administration/signing#automatic-signing">automatically signing commits</a> it generates (such as when
+merging pull requests, or editing files through the web editor). Sadly there is
+no documentation on how to actually configure this, besides vague references
+that it is left up to the server administrator to achieve.</p>
+<p>Secure key management is a topic fraught with complexity and trade off
+decisions, and the Gitea development team holds a (sensible) position that it is
+preferable to give no advice than it is to give <em>bad</em> advice.</p>
+<p>A position that I, as an internet rando, am absolutely not bound by, so here's
+what I did!</p>
+<p><em>Edit 2024-08-19: these exact steps also work for Forgejo! Just use
+<code>/var/lib/forgejo</code> instead of <code>/var/lib/gitea</code> for all instructions below</em></p>
+<span id="continue-reading"></span>
+<blockquote>
+<p>Seriously though, take a close look at your own threat model and security
+posture before you apply any of the following instructions, which are,
+frankly, provided for free, as in <em>used mattress</em>. These are educational
+instructions, and you bear all responsibility for the consequences of
+following them.</p>
+</blockquote>
+<h1 id="overview">Overview</h1>
+<p>Under the hood, Gitea basically has its own <code>.gitconfig</code> which is applied to all
+git operations that it performs. At the end of the day, all we need to do is
+ensure a GPG signing key is available inside Gitea's "home" directory and make
+sure that Gitea can interact with it unattended.</p>
+<blockquote>
+<p>Which is easier said than done as GPG strongly insists on passphrase prompts
+and is otherwise hostile to unattended interaction. Perhaps it is possible to
+achieve this by starting and priming a <code>gpg-agent</code> instance to be used by
+Gitea, but I did not bother investigating it as it adds more complexity, and
+still requires automating entering the passphrase to it. At that rate, a
+secret of one form or another needs to be available.</p>
+<p>I also have not (yet) tried using SSH signing. Since git already supports it
+with some config changes, it might be possible that it "just works", but I
+don't know if there might be other GPG-assumptions baked into Gitea (like the
+<code>/api/v1/signing-key.gpg</code> endpoint.</p>
+</blockquote>
+<h1 id="generating-a-new-key">Generating a new key</h1>
+<p>First we want to create a brand new GPG key for this Gitea instance. Note that
+this key only needs to be configured <em>for signing</em> as we'll only use it to
+generate a <em>second</em> signing subkey that will be used by Gitea.</p>
+<pre data-lang="sh" style="background-color:#0f1419;color:#bfbab0;" class="language-sh "><code class="language-sh" data-lang="sh"><span style="color:#ffb454;">gpg</span><span style="color:#f29718;"> --full-generate-key
+</span></code></pre>
+<p>Follow the wizard and fill in the values as appropriate. Note that GPG
+will ask for a passphrase. Generate a strong password and save it in your
+password manager (as we'll need it in a bit).</p>
+<pre style="background-color:#0f1419;color:#bfbab0;"><code><span>gpg (GnuPG) 2.4.5; Copyright (C) 2024 g10 Code GmbH
+</span><span>This is free software: you are free to change and redistribute it.
+</span><span>There is NO WARRANTY, to the extent permitted by law.
+</span><span>
+</span><span>Please select what kind of key you want:
+</span><span>   (1) RSA and RSA
+</span><span>   (2) DSA and Elgamal
+</span><span>   (3) DSA (sign only)
+</span><span>   (4) RSA (sign only)
+</span><span>   (9) ECC (sign and encrypt) *default*
+</span><span>  (10) ECC (sign only)
+</span><span>  (14) Existing key from card
+</span><span>Your selection? 10
+</span><span>Please select which elliptic curve you want:
+</span><span>   (1) Curve 25519 *default*
+</span><span>   (4) NIST P-384
+</span><span>   (6) Brainpool P-256
+</span><span>Your selection? 1
+</span><span>Please specify how long the key should be valid.
+</span><span>         0 = key does not expire
+</span><span>      &lt;n&gt;  = key expires in n days
+</span><span>      &lt;n&gt;w = key expires in n weeks
+</span><span>      &lt;n&gt;m = key expires in n months
+</span><span>      &lt;n&gt;y = key expires in n years
+</span><span>Key is valid for? (0) 0
+</span><span>Key does not expire at all
+</span><span>Is this correct? (y/N) y
+</span><span>
+</span><span>GnuPG needs to construct a user ID to identify your key.
+</span><span>
+</span><span>Real name: Example Gitea
+</span><span>Email address: gitea@git.example.com
+</span><span>Comment:
+</span><span>You selected this USER-ID:
+</span><span>    &quot;Example Gitea &lt;gitea@git.example.com&gt;&quot;
+</span><span>
+</span><span>Change (N)ame, (C)omment, (E)mail or (O)kay/(Q)uit? o
+</span><span>We need to generate a lot of random bytes. It is a good idea to perform
+</span><span>some other action (type on the keyboard, move the mouse, utilize the
+</span><span>disks) during the prime generation; this gives the random number
+</span><span>generator a better chance to gain enough entropy.
+</span><span>gpg: revocation certificate stored as
+</span><span>&#39;/home/ivan/.gnupg/openpgp-revocs.d/F41E36D6735FD9BE1B53518EA1596EF2CE56B350.rev&#39;
+</span><span>public and secret key created and signed.
+</span><span>
+</span><span>pub   ed25519/0xA1596EF2CE56B350 2024-05-05 [SC]
+</span><span>      Key fingerprint = F41E 36D6 735F D9BE 1B53  518E A159 6EF2 CE56 B350
+</span><span>uid                              Example Gitea &lt;gitea@git.example.com&gt;
+</span></code></pre>
+<p>Note the line about <code>gpg: revocation certificate stored as '/home/ivan/.gnupg/openpgp-revocs.d/F41E36D6735FD9BE1B53518EA1596EF2CE56B350.rev'</code>.
+This is a revocation certificate for the new key, generated here in case the
+key needs to be revoked in the future (but the secret part of the key is somehow
+lost or destroyed). Save this somewhere safe (like a password manager) and
+destroy this copy when done (and optionally ensure it is scrubbed from your ZFS
+snapshots if you care to).</p>
+<h1 id="generating-a-signing-subkey">Generating a signing subkey</h1>
+<p>Now it's time to generate a signing subkey that will be used by Gitea directly.
+The idea is that this subkey can be rotated at will while the main key remains
+offline/in cold storage (so it can be trusted for longer periods of time). Note
+that GPG will ask for the password we set earlier.</p>
+<pre data-lang="sh" style="background-color:#0f1419;color:#bfbab0;" class="language-sh "><code class="language-sh" data-lang="sh"><span style="color:#ffb454;">gpg</span><span style="color:#f29718;"> --edit-key</span><span> 0xA1596EF2CE56B350
+</span></code></pre>
+<pre style="background-color:#0f1419;color:#bfbab0;"><code><span>gpg (GnuPG) 2.4.5; Copyright (C) 2024 g10 Code GmbH
+</span><span>This is free software: you are free to change and redistribute it.
+</span><span>There is NO WARRANTY, to the extent permitted by law.
+</span><span>
+</span><span>Secret key is available.
+</span><span>
+</span><span>sec  ed25519/0xA1596EF2CE56B350
+</span><span>     created: 2024-05-05  expires: never       usage: SC
+</span><span>     trust: ultimate      validity: ultimate
+</span><span>[ultimate] (1). Example Gitea &lt;gitea@git.example.com&gt;
+</span><span>
+</span><span>gpg&gt; addkey
+</span><span>Please select what kind of key you want:
+</span><span>   (3) DSA (sign only)
+</span><span>   (4) RSA (sign only)
+</span><span>   (5) Elgamal (encrypt only)
+</span><span>   (6) RSA (encrypt only)
+</span><span>  (10) ECC (sign only)
+</span><span>  (12) ECC (encrypt only)
+</span><span>  (14) Existing key from card
+</span><span>Your selection? 10
+</span><span>Please select which elliptic curve you want:
+</span><span>   (1) Curve 25519 *default*
+</span><span>   (4) NIST P-384
+</span><span>   (6) Brainpool P-256
+</span><span>Your selection? 1
+</span><span>Please specify how long the key should be valid.
+</span><span>         0 = key does not expire
+</span><span>      &lt;n&gt;  = key expires in n days
+</span><span>      &lt;n&gt;w = key expires in n weeks
+</span><span>      &lt;n&gt;m = key expires in n months
+</span><span>      &lt;n&gt;y = key expires in n years
+</span><span>Key is valid for? (0) 0
+</span><span>Key does not expire at all
+</span><span>Is this correct? (y/N) y
+</span><span>Really create? (y/N) y
+</span><span>We need to generate a lot of random bytes. It is a good idea to perform
+</span><span>some other action (type on the keyboard, move the mouse, utilize the
+</span><span>disks) during the prime generation; this gives the random number
+</span><span>generator a better chance to gain enough entropy.
+</span><span>
+</span><span>sec  ed25519/0xA1596EF2CE56B350
+</span><span>     created: 2024-05-05  expires: never       usage: SC
+</span><span>     trust: ultimate      validity: ultimate
+</span><span>ssb  ed25519/0xA36F2B11E12C310D
+</span><span>     created: 2024-05-05  expires: never       usage: S
+</span><span>[ultimate] (1). Example Gitea &lt;gitea@git.example.com&gt;
+</span><span>
+</span><span>gpg&gt; save
+</span></code></pre>
+<h1 id="backing-up-the-newly-generated-keys">Backing up the newly generated keys</h1>
+<p>Now is a good time to store a secure copy of the key's we've just generated
+(e.g. storing the output somewhere in your password manager). Once again GPG
+will ask for the password we created earlier.</p>
+<pre data-lang="sh" style="background-color:#0f1419;color:#bfbab0;" class="language-sh "><code class="language-sh" data-lang="sh"><span style="color:#ffb454;">gpg</span><span style="color:#f29718;"> --export-secret-keys --armor --export-options</span><span> export-backup 0xA1596EF2CE56B350
+</span></code></pre>
+<h1 id="transferring-the-signing-subkey">Transferring the signing subkey</h1>
+<p>Next we'll need to transfer the signing subkey to the Gitea host itself. Running
+the following will print out the secret portion which we'll copy/paste
+afterwards. There are other ways to achieve this without leaving traces (either
+on disk or through the system clipboard) but that is left as an exercise to the
+(sufficiently paranoid) reader.</p>
+<pre data-lang="sh" style="background-color:#0f1419;color:#bfbab0;" class="language-sh "><code class="language-sh" data-lang="sh"><span style="color:#ffb454;">gpg</span><span style="color:#f29718;"> --export-secret-subkeys --armor</span><span> 0xA36F2B11E12C310D
+</span></code></pre>
+<p>Then, we need to ssh to the Gitea host and temporarily take on the <code>gitea</code> user.</p>
+<pre data-lang="sh" style="background-color:#0f1419;color:#bfbab0;" class="language-sh "><code class="language-sh" data-lang="sh"><span style="color:#ffb454;">ssh</span><span> giteahost.example.com
+</span><span style="color:#ffb454;">sudo</span><span> su gitea
+</span></code></pre>
+<p>On NixOS, Gitea will use <code>/var/lib/gitea</code> as its root directory, and <code>data/home</code>
+for it's <code>$HOME</code> equivalent (though both of these are configurable so consult
+your distro docs and replace the values as appropriate).</p>
+<pre data-lang="sh" style="background-color:#0f1419;color:#bfbab0;" class="language-sh "><code class="language-sh" data-lang="sh"><span style="font-style:italic;color:#5c6773;"># NB: using --batch here will suppress password prompts, meaning the key will
+</span><span style="font-style:italic;color:#5c6773;"># be imported without any (password) protection. Make sure Gitea&#39;s root
+</span><span style="font-style:italic;color:#5c6773;"># directory is fully sandboxed away from other users
+</span><span style="color:#ffb454;">gpg</span><span style="color:#f29718;"> --homedir</span><span> /var/lib/gitea/data/home/.gnupg</span><span style="color:#f29718;"> --batch --import
+</span><span style="font-style:italic;color:#5c6773;"># Paste the output from the previous command here.
+</span><span style="font-style:italic;color:#5c6773;"># Hit Enter then Ctrl+D to finish
+</span><span style="font-style:italic;color:#5c6773;">#
+</span><span style="font-style:italic;color:#5c6773;"># Note: if importing fails, kill all instances of `gpg-agent` and try again.
+</span></code></pre>
+<p>Now that the (subkey) is imported, we need to update its trust level:</p>
+<pre data-lang="sh" style="background-color:#0f1419;color:#bfbab0;" class="language-sh "><code class="language-sh" data-lang="sh"><span style="color:#ffb454;">gpg</span><span style="color:#f29718;"> --homedir</span><span> /var/lib/gitea/data/home/.gnupg</span><span style="color:#f29718;"> --edit-key</span><span> 0xA36F2B11E12C310D
+</span></code></pre>
+<pre style="background-color:#0f1419;color:#bfbab0;"><code><span>gpg (GnuPG) 2.4.5; Copyright (C) 2024 g10 Code GmbH
+</span><span>This is free software: you are free to change and redistribute it.
+</span><span>There is NO WARRANTY, to the extent permitted by law.
+</span><span>
+</span><span>Secret subkeys are available.
+</span><span>
+</span><span>gpg: /var/lib/gitea/data/home/.gnupg/trustdb.gpg: trustdb created
+</span><span>pub  ed25519/A1596EF2CE56B350
+</span><span>     created: 2024-05-05  expires: never       usage: SC
+</span><span>     trust: unknown       validity: unknown
+</span><span>ssb  ed25519/A36F2B11E12C310D
+</span><span>     created: 2024-05-05  expires: never       usage: S
+</span><span>[ unknown] (1). Example Gitea &lt;gitea@git.example.com&gt;
+</span><span>
+</span><span>gpg&gt; trust
+</span><span>pub  ed25519/A1596EF2CE56B350
+</span><span>     created: 2024-05-05  expires: never       usage: SC
+</span><span>     trust: unknown       validity: unknown
+</span><span>ssb  ed25519/A36F2B11E12C310D
+</span><span>     created: 2024-05-05  expires: never       usage: S
+</span><span>[ unknown] (1). Example Gitea &lt;gitea@git.example.com&gt;
+</span><span>
+</span><span>Please decide how far you trust this user to correctly verify other users&#39; keys
+</span><span>(by looking at passports, checking fingerprints from different sources, etc.)
+</span><span>
+</span><span>  1 = I don&#39;t know or won&#39;t say
+</span><span>  2 = I do NOT trust
+</span><span>  3 = I trust marginally
+</span><span>  4 = I trust fully
+</span><span>  5 = I trust ultimately
+</span><span>  m = back to the main menu
+</span><span>
+</span><span>Your decision? 5
+</span><span>Do you really want to set this key to ultimate trust? (y/N) y
+</span><span>
+</span><span>pub  ed25519/A1596EF2CE56B350
+</span><span>     created: 2024-05-05  expires: never       usage: SC
+</span><span>     trust: ultimate      validity: unknown
+</span><span>ssb  ed25519/A36F2B11E12C310D
+</span><span>     created: 2024-05-05  expires: never       usage: S
+</span><span>[ unknown] (1). Example Gitea &lt;gitea@git.example.com&gt;
+</span><span>Please note that the shown key validity is not necessarily correct
+</span><span>unless you restart the program.
+</span><span>
+</span><span>gpg&gt; quit
+</span></code></pre>
+<p>Lastly, we need to configure Gitea to not even attempt to open a pinentry prompt
+since there isn't going to be anyone around to answer it. We can achieve this by
+configuring git to call a wrapper program which invokes GPG with <code>--batch</code>
+(which will disable these prompts)</p>
+<pre data-lang="sh" style="background-color:#0f1419;color:#bfbab0;" class="language-sh "><code class="language-sh" data-lang="sh"><span style="font-style:italic;color:#5c6773;"># On NixOS, system-wide packages show up in /run/current-system/sw/bin/
+</span><span style="font-style:italic;color:#5c6773;"># swap it out with the appropriate location on your system
+</span><span style="color:#f07178;">echo </span><span style="color:#f29668;">&gt;</span><span>/var/lib/gitea/data/home/gpg-nopinentry </span><span style="color:#f29668;">&lt;&lt;</span><span style="color:#c2d94c;">&#39;</span><span style="color:#ff7733;">EOF</span><span style="color:#c2d94c;">&#39;
+</span><span style="color:#c2d94c;">#!/usr/bin/env bash
+</span><span style="color:#c2d94c;">exec /run/current-system/sw/bin/gpg --batch &quot;$@&quot;
+</span><span style="color:#ff7733;">EOF
+</span><span style="color:#ffb454;">chmod</span><span> +x /var/lib/gitea/data/home/gpg-nopinentry
+</span><span>
+</span><span style="color:#f07178;">echo </span><span style="color:#f29668;">&gt;&gt;</span><span>/var/lib/gitea/data/home/.gitconfig </span><span style="color:#f29668;">&lt;&lt;</span><span style="color:#ff7733;">EOF
+</span><span style="color:#c2d94c;">[gpg]
+</span><span style="color:#c2d94c;">	program = &quot;/var/lib/gitea/data/home/gpg-nopinentry&quot;
+</span><span style="color:#ff7733;">EOF
+</span></code></pre>
+<h1 id="telling-gitea-about-the-new-key">Telling Gitea about the new key</h1>
+<p>Gitea still needs to be instructed to use the key. There are a number of
+<a rel="nofollow noreferrer" href="https://web.archive.org/web/20240405224925/https://docs.gitea.com/administration/config-cheat-sheet#repository---signing-repositorysigning">configuration options</a> to consider but here are the most important ones to set.
+Make sure they match the values that were originally set when generating the
+root key.</p>
+<pre data-lang="ini" style="background-color:#0f1419;color:#bfbab0;" class="language-ini "><code class="language-ini" data-lang="ini"><span style="color:#ff7733;">[repository.signing]
+</span><span style="font-style:italic;color:#f29668;">SIGNING_KEY</span><span style="color:#f29668;">=</span><span>0xA36F2B11E12C310D
+</span><span style="font-style:italic;color:#f29668;">SIGNING_NAME</span><span style="color:#f29668;">=</span><span>Example Gitea
+</span><span style="font-style:italic;color:#f29668;">SIGNING_EMAIL</span><span style="color:#f29668;">=</span><span>gitea</span><span style="color:#ff7733;">@git</span><span style="color:#f29668;">.</span><span>example</span><span style="color:#f29668;">.</span><span>com
+</span></code></pre>
+<h1 id="clean-up">Clean up</h1>
+<p>Back on the original host we can now purge the secret keys (assuming they have
+been backed up securely) to minimize them getting compromised:</p>
+<pre data-lang="sh" style="background-color:#0f1419;color:#bfbab0;" class="language-sh "><code class="language-sh" data-lang="sh"><span style="color:#ffb454;">gpg</span><span style="color:#f29718;"> --delete-secret-keys</span><span> 0xA1596EF2CE56B350
+</span></code></pre>
+<p>Happy self-hosting!</p>
+
+        </div>
+
+        
+        <div class="pagination">
+            <div class="pagination__title">
+                <span class="pagination__title-h"></span>
+                <hr />
+            </div>
+            <div class="pagination__buttons">
+                    <span class="button previous">
+                        <a href="https://ipetkov.dev/blog/open-source-is-a-gift-relicensing-is-a-grift/">
+                            <span class="button__icon">←</span>&nbsp;
+                            <span class="button__text">Open Source is a Gift, Relicensing is a Grift</span>
+                        </a>
+                    </span>
+                
+                
+                    <span class="button next">
+                        <a href="https://ipetkov.dev/blog/markdown-to-pdf-pipeline/">
+                            <span class="button__text">The Markdown to PDF pipeline I wish someone told me about</span>&nbsp;
+                            <span class="button__icon">→</span>
+                        </a>
+                    </span>
+                </div>
+        </div>
+    
+    </div>
+
+    </div>
+
+    
+  <footer class="footer">
+    <div class="footer__inner">
+      <div class="copyright">
+        <span>© 
+    2025
+ Ivan Petkov</span>
+
+        <span class="copyright-theme">
+          <span class="copyright-theme-sep">:: </span>
+          Theme based on <a href="https://github.com/pawroman/zola-theme-terminimal/">Terminimal</a> by pawroman
+        </span>
+      </div>
+    </div>
+  </footer>
+
+
+</div>
+</body>
+
+</html>
