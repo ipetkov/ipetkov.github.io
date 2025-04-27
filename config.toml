@@ -3,8 +3,8 @@ build_search_index = false
 default_language = "en"
 compile_sass = true
 minify_html = false
-feed_filename = "atom.xml"
-generate_feed = true
+feed_filenames = ["atom.xml"]
+generate_feeds = true
 taxonomies = [
     {name = 'tags'}
 ]
