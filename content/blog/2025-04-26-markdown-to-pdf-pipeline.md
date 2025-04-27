@@ -2,6 +2,7 @@
 title = "The Markdown to PDF pipeline I wish someone told me about"
 description = ""
 date = 2025-04-26
+updated = 2025-04-27
 
 [taxonomies]
 tags = [ "markdown", "pandoc", "typst" ]
@@ -146,6 +147,15 @@ pandoc \
   --metadata-file=metadata.yaml \
   *.md
 ```
+
+> As an added bonus, if you ever want to inject some one-off Typst specific
+> markdown but not apply it to the entire template, you can use Pandoc's
+> `raw_attribute` syntax like so:
+> ````
+> ```{=typst}
+> #lorem(30)
+> ```
+> ````
 
 [Pandoc]: https://pandoc.org/
 [Typst]: https://typst.app/docs/
