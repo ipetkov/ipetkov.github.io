@@ -2,14 +2,14 @@
 title = "Installing NixOS and ZFS on my Desktop"
 description = "A walk through how I went about installing NixOS on my desktop."
 date = 2021-01-24
-updated = 2026-06-08
+updated = 2026-06-19
 
 [taxonomies]
 tags = ["NixOS", "zfs"]
 +++
 
 _This write up was originally published within my
-[dotfiles](https://github.com/ipetkov/dotfiles/blob/fdb4df76ca2b031f4dcc668f6a8b58edb1948a52/docs/machine_init.md)_.
+[dotfiles](https://github.com/ipetkov/dotfiles/blob/9cb14e00f4e31eb427fc5f2da2cc3c7aa6016d8d/docs/machine_init.md)_.
 
 NixOS is a great tool for declaratively managing system configurations (namely
 what packages and other config files are available), but there are still a
