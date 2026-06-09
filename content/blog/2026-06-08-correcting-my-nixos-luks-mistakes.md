@@ -1,7 +1,7 @@
 +++
 title = "Correcting my NixOS LUKS mistakes"
 description = ""
-date = 2026-06-08
+date = 2026-06-09
 
 [taxonomies]
 tags = [ "luks", "NixOS" ]
@@ -15,9 +15,9 @@ unlock the other disks.
 
 This apparently only worked on NixOS on the happenstance that systemd was
 patched up to make it work. Recently (just before the NixOS 26.05 release) that
-patch [was dropped dropped](https://github.com/NixOS/nixpkgs/pull/488508) which
-ends up breaking this setup (systemd will decrypt the device but other units
-depending on it end up hanging).
+patch [was dropped](https://github.com/NixOS/nixpkgs/pull/488508) which ends up
+breaking this setup (systemd will decrypt the device but other units depending
+on it end up hanging).
 
 Here's how I chose to correct this mistake.
 
