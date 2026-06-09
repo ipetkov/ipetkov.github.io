@@ -2,7 +2,7 @@
 title = "NixOS on the PiBox"
 description = "NixOS, LUKS, and ZFS on the PiBox"
 date = 2023-02-19
-updated = 2023-06-04
+updated = 2026-06-08
 
 [taxonomies]
 tags = [ "luks", "NixOS", "raspberrypi", "zfs" ]
@@ -252,11 +252,21 @@ ls -l /dev/disk/by-uuid
 ```
 
 ## LUKS Configuration
+
+> Note: the original version of this write-up described a flawed approach at
+> initializing `cryptkey` (without creating a filesystem) which will fail to
+> boot starting with NixOS 26.05. This has since been corrected to show the
+> _proper_ steps to initialize LUKS while _avoiding_ this problem, but for
+> anyone who may have followed the earlier instructions, [see
+> here](@/blog/2026-06-08-correcting-my-nixos-luks-mistakes.md) on how to
+> correct the issue
+
 Encrypting the SSD('s non-boot partitions) works just like on any other machine.
 To give a concrete example, we're going to set up things in the following manner:
 * `cryptkey` - this is the second partition we created above, and will be
-  unlocked with a password we remember. Its contents will be a bunch of random
-  data which will be used for unlocking the rest of the encrypted partitions
+  unlocked with a password we remember. It will contain a filesystem with a file
+  whose contents will be a bunch of random data which will be used for unlocking
+  the rest of the encrypted partitions
 * `cryptswap` - this is the third partition we created above, and will be
   unlocked using the decrypted `cryptkey` partition. It will be used for the
   system's swap.
@@ -280,20 +290,25 @@ To give a concrete example, we're going to set up things in the following manner
 # at boot, and make it a good one!
 cryptsetup luksFormat --type luks1 "${VDISK}2"
 cryptsetup open --type luks1 "${VDISK}2" cryptkey
+
+mkfs.ext4 /dev/mapper/cryptkey
+mkdir -p /mnt-cryptkey
+mount /dev/mapper/cryptkey /mnt-cryptkey
+
 # Fill the (decrypted) cryptkey partition full of random data
 # This invocation will fail with a "device out of space" error which is expected
-dd if=/dev/urandom of=/dev/mapper/cryptkey bs=1024 status=progress
+dd if=/dev/urandom of=/mnt-cryptkey/keyfile bs=1024 status=progress
 
 # Create and mount the encrypted swap partition
 cryptsetup luksFormat \
   --type luks1 \
   --keyfile-size 8192 \
-  --key-file /dev/mapper/cryptkey \
+  --key-file /mnt-cryptkey/keyfile \
   "${VDISK}3"
 cryptsetup open \
   --type luks1 \
   --keyfile-size 8192 \
-  --key-file /dev/mapper/cryptkey \
+  --key-file /mnt-cryptkey/keyfile \
   "${VDISK}3" \
   cryptswap
 
@@ -303,14 +318,18 @@ cryptsetup luksFormat --type luks1 "${VDISK}4"
 cryptsetup luksAddKey \
   --new-keyfile-size 8192 \
   "${VDISK}4" \
-  /dev/mapper/cryptkey
+  /mnt-cryptkey/keyfile
 cryptsetup open \
   --type luks1 \
   --keyfile-size 8192 \
-  --key-file /dev/mapper/cryptkey \
+  --key-file /mnt-cryptkey/keyfile \
   --allow-discards \
   "${VDISK}4" \
   cryptroot
+
+# Unmount and close the cryptkey partition
+umount /mnt-cryptkey
+cryptsetup close cryptkey
 ```
 
 Finally, we initialize the (unencrypted) boot partition with an empty FAT32
@@ -661,14 +680,14 @@ PWM fan and LCD on the PiBox!
                   cryptroot = {
                     allowDiscards = true;
                     device = deviceCryptRoot;
-                    keyFile = "/dev/mapper/cryptkey";
+                    keyFile = "/keyfile:/dev/mapper/cryptkey";
                     keyFileSize = 8192;
                   };
 
                   cryptswap = {
                     allowDiscards = true;
                     device = deviceCryptSwap;
-                    keyFile = "/dev/mapper/cryptkey";
+                    keyFile = "/keyfile:/dev/mapper/cryptkey";
                     keyFileSize = 8192;
                   };
                 };
