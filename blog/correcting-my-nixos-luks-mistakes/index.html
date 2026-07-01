@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <title>Correcting my NixOS LUKS mistakes | Ivan Petkov</title>
+    
+    <meta http-equiv="content-type" content="text/html; charset=utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1">
+    <meta name="robots" content="noodp"/>
+
+    <link rel="stylesheet" href="https://ipetkov.dev/style.css">
+    <link rel="stylesheet" href="https://ipetkov.dev/color/green.css">
+
+        <link rel="stylesheet" href="https://ipetkov.dev/color/background_blue.css">
+    
+    <link rel="stylesheet" href="https://ipetkov.dev/font-hack-subset.css">
+
+        <link rel="alternate" type="application/rss+xml" title="RSS" href="https://ipetkov.dev/rss.xml">
+    <meta property="og:title" content="Correcting my NixOS LUKS mistakes">
+<meta property="og:site_name" content="ipetkov.dev">
+<meta property="og:image" content="https://ipetkov.dev/favicon.png">
+<meta property="og:image:type" content="image/png">
+<meta property="og:image:alt" content="ipetkov.dev favicon">
+<meta property="og:url" content="https://ipetkov.dev/blog/correcting-my-nixos-luks-mistakes/">
+<meta property="og:description" content="">
+<meta property="og:type" content="article">
+<link rel="icon" type="image/png" href="https://ipetkov.dev/favicon.png">
+<link rel="stylesheet" href="https://ipetkov.dev/overrides.css">
+<link rel="me" href="https://hachyderm.io/@ivan">
+<link rel="alternate" type="application/atom+xml" title="Ivan Petkov" href="https://ipetkov.dev/atom.xml"></head>
+
+<body class="">
+<div class="container">
+    
+    <header class="header">
+        <div class="header__inner">
+            <div class="header__logo">
+                    
+                <a href="https://ipetkov.dev" style="text-decoration: none;">
+                    <div class="logo">
+                      ipetkov.dev
+                    </div>
+                </a>
+            </div>
+        </div>
+
+        
+        <nav class="menu">
+            <ul class="menu__inner">
+                <li><a href="https://ipetkov.dev">home</a></li>
+            
+                <li><a href="https://ipetkov.dev/about">about</a></li>
+            
+                <li class="active"><a href="https://ipetkov.dev/blog">blog</a></li>
+            
+                <li><a href="https://ipetkov.dev/tags">tags</a></li>
+            </ul>
+        </nav>
+    
+    
+        
+    </header>
+    
+
+    <div class="content">
+        
+    <div class="post">
+        
+    <h1 class="post-title"><a href="https://ipetkov.dev/blog/correcting-my-nixos-luks-mistakes/">Correcting my NixOS LUKS mistakes</a></h1>
+    <div class="post-meta-inline">
+        
+    <span class="post-date">
+            2026-06-09
+        </span>
+
+    </div>
+
+    
+        <span class="post-tags-inline">
+                :: tags:&nbsp;
+                <a class="post-tag" href="https://ipetkov.dev/tags/luks/">#luks</a>&nbsp;
+                <a class="post-tag" href="https://ipetkov.dev/tags/nixos/">#NixOS</a></span>
+    
+
+        
+        <div class="post-content">
+            <p>I <a href="https://ipetkov.dev/blog/installing-nixos-and-zfs-on-my-desktop/">have</a> previously
+<a href="https://ipetkov.dev/blog/nixos-on-the-pibox/">written</a> about how I setup full disk
+encryption via LUKS on my NixOS machines. There I made the mistake of not
+initializing a filesystem on the (encrypted) partition meant to hold the key to
+unlock the other disks.</p>
+<p>This apparently only worked on NixOS on the happenstance that systemd was
+patched up to make it work. Recently (just before the NixOS 26.05 release) that
+patch <a rel="nofollow noreferrer" href="https://github.com/NixOS/nixpkgs/pull/488508">was dropped</a> which ends up
+breaking this setup (systemd will decrypt the device but other units depending
+on it end up hanging).</p>
+<p>Here's how I chose to correct this mistake.</p>
+<span id="continue-reading"></span><h1 id="background">Background</h1>
+<p>I don't fully remember exactly why I used this setup in the way that I did. It
+was my first ever ("real") desktop Linux installation so I ended up following
+whatever random guides I could find online about setting up LUKS for NixOS. The
+premise is:</p>
+<ol>
+<li>Create an encrypted partition which is unlocked with a passphrase (called
+<code>cryptkey</code> in my configs)</li>
+<li>Unlock the partition and (mistakenly!) fill it with random bytes. The correct
+thing would have been to create a filesystem on the unlocked device, and
+create a file with random bytes instead.</li>
+<li>Create additional encrypted partitions for the system (e.g. <code>cryptroot</code> for
+the root, <code>cryptswap</code> for swap, etc.) and use (some) of the random bytes
+above</li>
+<li>Also add a (secondary) passphrase to the encrypted root partition so that it
+can still be unlocked and recovered if the keyfile was destroyed or corrupted</li>
+</ol>
+<p>The idea is that at boot you'd only need to type in the passphrase for the
+encrypted keyfile once and everything else would get automatically unlocked
+afterwards.</p>
+<p>Why not just reuse the same passphrase for all encrypted partitions? Maybe at
+the time support for passphrase reuse was flaky (or old habits or different threat
+models?) so the guides I found suggested this route instead of reusing
+passphrases. I ended up replicating this pattern (mistakes and all) across all
+my machines; at the very least at least I had the same, familiar setup
+everywhere.</p>
+<h1 id="the-easy-way-out">The easy way out</h1>
+<p>Today, systemd can handle reusing typed in passphrases out of the box, so if all
+you care about is not having to type the same passphrase in multiple times, one
+easy solution if you've made the same mistake is to ensure all encrypted
+partitions are enrolled to unlock with the same passphrase. Run <code>cryptsetup luksAddKey /path/to/device</code> on every such device and you're good to go.</p>
+<p>The downside with this approach is if you ever want to rotate the passphrase
+you'll have to remember to do that to all such partitions.</p>
+<h1 id="the-more-involved-way">The more involved way</h1>
+<p>If the easy way out is not particularly satisfying, the more involved way is to:</p>
+<ol>
+<li>(carefully) copy the keyfile</li>
+<li>wipe the previous (encrypted) partition</li>
+<li>initialize it with a filesystem</li>
+<li>copy the keyfile back</li>
+<li>rework the NixOS configuration to properly mount the filesystem and use the
+keyfile to unlock the rest of the partitions</li>
+</ol>
+<p>Let me spell out exactly how I went about it (across my four machines) for
+anyone who finds this after the fact.</p>
+<h2 id="0-optional-practice">0. Optional practice</h2>
+<p>I practiced this procedure by creating a VM and installing NixOS on it with the
+same encryption setup as my machines. You'd probably want a very minimal setup
+(just to make the installation and boot faster) enough to verify unlocking
+works. I ran through the steps below, including making changes to the NixOS
+configuration itself to gain the confidence that I wouldn't screw it up when
+doing the procedure for real.</p>
+<h2 id="1-preparation">1. Preparation</h2>
+<p>First, make sure your backups (you do have backups, right?) are good and <em>you
+have tested recovering</em> from them. If something goes wrong and the drive is
+rendered impossible to decrypt, your data will effectively be lost so don't skip
+this step!</p>
+<p>Second, make sure each partition whose contents you care about (e.g. you care
+about your encrypted root partition, you may not care about your encrypted swap
+partition) has an additional passphrase enrolled (i.e. besides unlocking with a
+keyfile) and you know the passphrase or have otherwise securely stored it in a
+password manager. You can test the passphrase via <code>cryptsetup open --test-passphrase /path/to/device &amp;&amp; echo success</code>; add one via <code>cryptsetup luksAddKey /path/to/device</code> if you haven't already or you couldn't unlock it
+with a previous such passphrase.</p>
+<h2 id="2-interim-nixos-configuration">2. Interim NixOS configuration</h2>
+<p>As it currently stands, we likely have a NixOS configuration which can boot and
+unlocking using our keyfile-not-on-a-filesystem. We want to get to a state where
+the same keyfile is present on a filesystem. But if we get anything wrong we'll
+render the system unable to boot (at which point we can recover using a NixOS
+installer image/usb but it gets more annoying).</p>
+<p>One way to make this nicer is to create an <em>interim</em> NixOS configuration which
+effectively disables using the keyfile. Instead, we'll rely on that secondary
+passphrase to unlock the root partition. This way we can still successfully
+boot the system even if we've wiped the previous keyfile storage but haven't
+fully wired everything up yet.</p>
+<p>We'll want to:</p>
+<ol>
+<li>Comment out <code>swapDevices</code> in the NixOS configuration if they are encrypted</li>
+<li>Comment out <code>boot.initrd.luks.devices.cryptkey</code> and any other partitions
+which do not have a passphase enrolled (e.g. <code>boot.initrd.luks.devices.cryptswap</code>)</li>
+<li>Comment out <code>keyFile</code> and <code>keyFileSize</code> (if used) from
+<code>boot.initrd.luks.devices.cryptroot</code> (and any other such partitions if you
+use mirrored disks for example)</li>
+<li>Do a <code>nixos-rebuild boot</code> and reboot</li>
+</ol>
+<p>At this point we should be able to boot the system by typing in that secondary
+passphrase (NOT the passphrase we previously used to unlock <code>cryptkey</code>). If
+something doesn't work here, reboot to an earlier NixOS configuration (and
+unlock with the usual passphrase for <code>cryptkey</code>) and start over.</p>
+<h2 id="3-extract-the-keyfile">3. Extract the keyfile</h2>
+<p>Now we'll unlock <code>cryptkey</code> (by default I have this partition closed post-boot)
+and back up its contents. Be careful where these copies end up (e.g. so they
+don't accidentally show up in backups or someplace else) as anyone with this
+keyfile and access to the system will be able to decrypt it.</p>
+<p>All of the following commands will likely need to be run as root (<code>sudo -i</code> will
+drop us into a root shell so we can avoid prefixing them all with <code>sudo</code>):</p>
+<pre data-lang="sh" style="background-color:#0f1419;color:#bfbab0;" class="language-sh "><code class="language-sh" data-lang="sh"><span style="font-style:italic;color:#5c6773;"># Unlock cryptkey
+</span><span style="color:#ffb454;">cryptsetup</span><span> open /path/to/cryptkey/device cryptkey
+</span><span>
+</span><span style="font-style:italic;color:#5c6773;"># Set umask to make sure the file is created with the correct permissions
+</span><span style="color:#f07178;">umask</span><span> 377
+</span><span style="font-style:italic;color:#5c6773;"># Copy the contents to a file
+</span><span style="color:#ffb454;">dd</span><span> if=/dev/mapper/cryptkey of=./cryptkey-backup bs=4096 conv=fdatasync
+</span><span>
+</span><span style="font-style:italic;color:#5c6773;"># Compare the two files have the same contents
+</span><span style="color:#ffb454;">cmp</span><span> /dev/mapper/cryptkey ./cryptkey-backup </span><span style="color:#f29668;">&amp;&amp; </span><span style="color:#f07178;">echo</span><span> same
+</span><span>
+</span><span style="font-style:italic;color:#5c6773;"># Lastly, double check that the backed up keyfile can successfully open
+</span><span style="font-style:italic;color:#5c6773;"># the other partitions. Replace the `--keyfile-size` parameter with the
+</span><span style="font-style:italic;color:#5c6773;"># appropriate value (I used 8192 when creating the system)
+</span><span style="color:#ffb454;">cryptsetup</span><span> open</span><span style="color:#f29718;"> --test-passphrase </span><span style="color:#bfbab0cc;">\
+</span><span style="color:#f29718;">  --key-file</span><span> ./cryptkey-backup </span><span style="color:#bfbab0cc;">\
+</span><span style="color:#f29718;">  --keyfile-size</span><span> 8192 </span><span style="color:#bfbab0cc;">\
+</span><span>  /path/to/cryptroot </span><span style="color:#f29668;">&amp;&amp; </span><span style="color:#f07178;">echo</span><span> success
+</span></code></pre>
+<p>Optional: consider backing this up further to a password manager if that fits
+your threat model.</p>
+<h2 id="4-initialize-a-filesytem-on-cryptkey-destructive">4. Initialize a filesytem on <code>cryptkey</code> (DESTRUCTIVE!)</h2>
+<p>Now we're ready to perform (destructive!) operations on our unlocked <code>cryptkey</code>
+partition by initializing a file system:</p>
+<blockquote>
+<p>Aside: assuming you had previously filled the entire contents of <code>cryptkey</code>
+with random bytes, you won't actually be able to fit the entire file back on
+the new filesystem, because the filesystem itself usually needs some space for
+its own book keeping. Meaning unless you want to repartition the disk (which
+has its own risks in losing the data), you will not be able to fit all the
+bytes that were previously written to the <code>cryptkey</code> partition.</p>
+<p>Assuming that you used an explicit length of the key (like 8192 bytes) this
+will be okay because we only need those specific bytes to survive the
+transition. If you used the entire contents of the previous <code>cryptkey</code>
+partition, you may need to take an alternative approach (like generating a new
+keyfile and enrolling that as a keyfile to all encrypted disks).</p>
+</blockquote>
+<pre data-lang="sh" style="background-color:#0f1419;color:#bfbab0;" class="language-sh "><code class="language-sh" data-lang="sh"><span style="font-style:italic;color:#5c6773;"># Initialize a filesystem. In this case I chose ext4
+</span><span style="color:#ffb454;">nix</span><span> shell nixpkgs#e2fsprogs</span><span style="color:#f29718;"> --command</span><span> mkfs.ext4 /dev/mapper/cryptkey
+</span><span style="font-style:italic;color:#5c6773;"># Ensure we have a place to mount the new filesystem
+</span><span style="color:#ffb454;">mkdir</span><span style="color:#f29718;"> -p</span><span> /mnt
+</span><span style="font-style:italic;color:#5c6773;"># Mount it
+</span><span style="color:#ffb454;">mount</span><span> /dev/mapper/cryptkey /mnt
+</span><span>
+</span><span style="font-style:italic;color:#5c6773;"># Set umask to make sure the file is created with the correct permissions
+</span><span style="color:#f07178;">umask</span><span> 377
+</span><span style="font-style:italic;color:#5c6773;"># Copy it over
+</span><span style="color:#ffb454;">cp</span><span> ./cryptkey-backup /mnt/keyfile
+</span><span style="font-style:italic;color:#5c6773;"># Note, you may see an error like:
+</span><span style="font-style:italic;color:#5c6773;"># cp: error writing &#39;/mnt/keyfile&#39;: No space left on device
+</span><span style="font-style:italic;color:#5c6773;"># Based on the aside above, this should not cause alarm
+</span><span>
+</span><span style="font-style:italic;color:#5c6773;"># Now we should check that the first N bytes of the two keyfiles match. For me N
+</span><span style="font-style:italic;color:#5c6773;"># is 8192 but replace this with your keyfile-size parameter
+</span><span style="color:#ffb454;">cmp </span><span style="color:#f29668;">&lt;</span><span>(</span><span style="color:#ffb454;">head</span><span style="color:#f29718;"> -c</span><span> 8192 /mnt/keyfile) </span><span style="color:#f29668;">&lt;</span><span>(</span><span style="color:#ffb454;">head</span><span style="color:#f29718;"> -c</span><span> 8192 ./cryptkey-backup)
+</span><span>
+</span><span style="font-style:italic;color:#5c6773;"># Lastly, we double check that the new keyfile can still unlock things
+</span><span style="color:#ffb454;">cryptsetup</span><span> open</span><span style="color:#f29718;"> --test-passphrase </span><span style="color:#bfbab0cc;">\
+</span><span style="color:#f29718;">  --key-file</span><span> /mnt/keyfile </span><span style="color:#bfbab0cc;">\
+</span><span style="color:#f29718;">  --keyfile-size</span><span> 8192 </span><span style="color:#bfbab0cc;">\
+</span><span>  /path/to/cryptroot </span><span style="color:#f29668;">&amp;&amp; </span><span style="color:#f07178;">echo</span><span> success
+</span><span>
+</span><span style="font-style:italic;color:#5c6773;"># Unmount and close cryptkey
+</span><span style="color:#ffb454;">umount</span><span> /mnt
+</span><span style="color:#ffb454;">cryptsetup</span><span> close cryptkey
+</span></code></pre>
+<h2 id="5-final-nixos-configuration">5. Final NixOS configuration</h2>
+<p>Now its time to update our NixOS configuration so it can boot and unlock with
+the changes we just made:</p>
+<ol>
+<li>Add <code>boot.initrd.checkJournalingFS = true;</code> to the configuration: it enables
+running fsck on journaling filesystems (like ext4) after mounting them during
+boot. Not strictly required but felt like a good measure to me</li>
+<li>Add <code>boot.initrd.supportedFilesystems = [ "ext4" ];</code> to the configuration:
+ensures that systemd can successfully mount the new filesystem (normally
+these are inferred via <code>filesystems</code>, but since we don't plan on having this
+remain mounted, we need to explicitly ensure the support is enabled)</li>
+<li>Uncomment any previously commented out <code>boot.initrd.luks.devices</code> entries
+(including <code>cryptkey</code>)</li>
+<li>Uncomment out any <code>keyFileSize</code> parameters in <code>boot.initrd.luks.devices</code></li>
+<li>Set <code>boot.initrd.lusks.devices.*.keyFile = "/keyfile:/dev/mapper/cryptkey";</code>:
+Here, <code>/keyfile</code> is the path to the keyfile relative to the filesystem we just
+created, while <a rel="nofollow noreferrer" href="https://www.freedesktop.org/software/systemd/man/latest/crypttab.html">the part after <code>:</code> represents the (decrypted) device to
+mount</a>.</li>
+<li>Uncomment out any <code>swapDevices</code></li>
+<li>Do a <code>nixos-rebuild boot</code> and reboot</li>
+</ol>
+<p>At this point, type in the original passphrase for <code>cryptkey</code> and if everything
+was done correctly the system should boot!</p>
+<p>Optional: at this point, consider deleting <code>./cryptkey-backup</code> if you do not
+want a copy of it lingering around.</p>
+
+        </div>
+
+        
+        <div class="pagination">
+            <div class="pagination__title">
+                <span class="pagination__title-h"></span>
+                <hr />
+            </div>
+            <div class="pagination__buttons">
+                    <span class="button previous">
+                        <a href="https://ipetkov.dev/blog/markdown-to-pdf-pipeline/">
+                            <span class="button__icon">←</span>&nbsp;
+                            <span class="button__text">The Markdown to PDF pipeline I wish someone told me about</span>
+                        </a>
+                    </span>
+                
+                </div>
+        </div>
+    
+    </div>
+
+    </div>
+
+    
+  <footer class="footer">
+    <div class="footer__inner">
+      <div class="copyright">
+        <span>© 
+    2026
+ Ivan Petkov</span>
+
+        <span class="copyright-theme">
+          <span class="copyright-theme-sep">:: </span>
+          Theme based on <a href="https://github.com/pawroman/zola-theme-terminimal/">Terminimal</a> by pawroman
+        </span>
+      </div>
+    </div>
+  </footer>
+
+
+</div>
+</body>
+
+</html>

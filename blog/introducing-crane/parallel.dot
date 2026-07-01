@@ -1,0 +1,24 @@
+strict digraph G {
+  bgcolor="#1d212c"
+  node[
+    color="lightgray"
+    fontcolor="white"
+  ];
+  edge[
+    color="lightgray"
+  ];
+
+  "crates.io sources" [shape=box];
+  src [shape=box];
+
+  "crates.io sources" -> deps;
+  "crates.io sources" -> deps;
+
+  src -> clippy;
+  src -> "my-crate";
+  src -> coverage;
+
+  deps -> clippy;
+  deps -> "my-crate";
+  deps -> coverage;
+}

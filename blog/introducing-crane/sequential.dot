@@ -1,0 +1,31 @@
+strict digraph G {
+  rankdir="TB"
+  bgcolor="#1d212c"
+  node[
+    color="lightgray"
+    fontcolor="white"
+  ];
+  edge[
+    color="lightgray"
+  ];
+
+  "crates.io sources" [shape=box];
+  "crates.io sources" -> deps;
+
+  src [shape=box];
+  src -> clippy [rankdir="TB"];
+  src -> "my-crate" [rankdir="TB"];
+  src -> coverage [rankdir="TB"];
+
+  deps -> clippy;
+  clippy -> coverage;
+  coverage -> "my-crate";
+
+  subgraph s {
+      rank="same"
+      deps
+      clippy
+      coverage
+      "my-crate"
+  }
+}
