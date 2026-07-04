@@ -12,10 +12,11 @@ title = "Ivan Petkov"
 theme = "terminimal"
 
 [markdown]
-highlight_code = true
-highlight_theme = "ayu-dark"
 external_links_no_follow = true
 external_links_no_referrer = true
+
+[markdown.highlighting]
+theme = "ayu-dark"
 
 [extra]
 accent_color = "green"

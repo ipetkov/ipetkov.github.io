@@ -46,7 +46,7 @@ subtitle: A simple Markdown to PDF pipeline
 ```
 
 Then save the following (and tweak it to your liking) under `my.template`:
-```perl
+```typst
 // Loosely based on
 // https://web.archive.org/web/20250427030050/https://imaginarytext.ca/posts/2024/pandoc-typst-tutorial/
 #let conf(
