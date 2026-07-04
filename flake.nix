@@ -46,6 +46,12 @@
             ];
           };
 
+          ci = pkgs.mkShell {
+            packages = [
+              pkgs.rsync
+            ];
+          };
+
           zizmor = pkgs.mkShell {
             packages = [
               pkgs.zizmor
