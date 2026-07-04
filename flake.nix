@@ -6,13 +6,20 @@
     utils.url = "github:numtide/flake-utils";
   };
 
-  outputs = { self, nixpkgs, utils, ... }:
+  outputs =
+    {
+      self,
+      nixpkgs,
+      utils,
+      ...
+    }:
     let
       supportedSystems = [
         "x86_64-linux"
       ];
     in
-    utils.lib.eachSystem supportedSystems (system:
+    utils.lib.eachSystem supportedSystems (
+      system:
       let
         pkgs = import nixpkgs {
           inherit system;
@@ -24,16 +31,27 @@
       in
       {
         checks = myPkgs;
-        packages = myPkgs // { default = myPkgs.blog; };
-
-        devShells.default = pkgs.mkShell {
-          inputsFrom = builtins.attrValues self.checks.${system};
-
-          buildInputs = with pkgs; [
-            exiftool
-            graphviz
-            nixpkgs-fmt
-          ];
+        packages = myPkgs // {
+          default = myPkgs.blog;
         };
-      });
+
+        devShells = {
+          default = pkgs.mkShell {
+            inputsFrom = builtins.attrValues self.checks.${system};
+
+            buildInputs = [
+              pkgs.exiftool
+              pkgs.graphviz
+              pkgs.nixpkgs-fmt
+            ];
+          };
+
+          zizmor = pkgs.mkShell {
+            packages = [
+              pkgs.zizmor
+            ];
+          };
+        };
+      }
+    );
 }

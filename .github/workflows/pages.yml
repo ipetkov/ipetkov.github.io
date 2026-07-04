@@ -3,23 +3,36 @@ on:
   push:
     branches:
       - "main"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   deploy:
+    name: deploy
     runs-on: ubuntu-latest
     env:
       SSH_AUTH_SOCK: /tmp/ssh_agent.sock
     steps:
-      - uses: actions/checkout@v7
-      - uses: cachix/install-nix-action@v31
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+      - uses: cachix/install-nix-action@8aa03977d8d733052d78f4e008a241fd1dbf36b3 # v31.10.6
       - name: zola build
         run: |
           mkdir output
           nix build --out-link result --print-build-logs
           rsync -r -L ./result/ ./output
-      - name: setup SSH keys
-        run: |
-          ssh-agent -a $SSH_AUTH_SOCK > /dev/null
-          ssh-add - <<< "${{ secrets.DEPLOY_KEY }}"
+      - name: start ssh-agent
+        run: ssh-agent -a $SSH_AUTH_SOCK > /dev/null
+      - name: setup deploy key
+        env:
+          DEPLOY_KEY: ${{ secrets.DEPLOY_KEY }}
+        run: ssh-add - <<< "${DEPLOY_KEY}"
       - name: push
         working-directory: output
         run: |
