@@ -38,6 +38,9 @@ jobs:
     environment:
       name: github-pages
       url: ${{ steps.build.outputs.page_url }}
+    permissions:
+      pages: write      # to deploy to Pages
+      id-token: write   # to verify the deployment originates from an appropriate source
     steps:
       - name: Deploy to GitHub Pages
         id: deployment
